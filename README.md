@@ -1,14 +1,12 @@
 
-# Advanced EAP & EU-Unlock V1.2 for LilyGO/T-2Can  
+# Nag-killer Advanced EAP & EU-Unlock V1.2 Model YL version for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
 > This project interacts with a vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
 ---
 
-## Version1.2b 
-
-⚠️ you will need another esp32 for Nag-Killer on party CAN.
+## Version1.0a 
 
 CAN A Body CAN → Advanced EAP  
 CAN B Chassis CAN → EU Summon Unlock
@@ -20,6 +18,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - you can always cancel on screen or with opposite turn signal.  
 
 --------------------EU Unlock------------------
+- Added madmax settings toggle  
 - toggle to restore TLSSC on banned car*
 - toggle to activate TLSSC where it is not available.
 - bypass R79 EU restriction in AP
@@ -39,10 +38,10 @@ CAN B Chassis CAN → EU Summon Unlock
 
 This fork was adapted for:
 
-| Device                       | Can Transceiver                 | CAN RX / CAN TX   | Can Bus      | Power                     |
-| ---------------------------- | ------------------------------- | ----------------- | ------------ | ------------------------- |
-| LilyGO/T-2Can                |CAN A Body CAN → Advanced EAP    |                   |              |                           |
-|                              |CAN B Chassis CAN → Summon Unlock|                   | 500 kbps CAN | USB-C or stable 12V supply|
+| Device                       | Can Transceiver                         | CAN RX / CAN TX   | Can Bus      | Power                     |
+| ---------------------------- | --------------------------------------- | ----------------- | ------------ | ------------------------- |
+| LilyGO/T-2Can                |CAN A Party CAN → Nag Killer & EU Unlock |                   |              |                           |
+|                              |CAN B Body/VH CAN → EU Unlock & Adv EAP  |                   | 500 kbps CAN | USB-C or stable 12V supply|
 
 Don't forget to remove the two 120-ohm resistors which can cause signal errors.   
 <img width="407" height="180" alt="LILYGO-T-2CAN_9" src="https://github.com/user-attachments/assets/0d272b7e-bd82-408f-9ca1-239e6dab44d5" />
@@ -62,8 +61,8 @@ https://github.com/autowp/arduino-mcp2515
 - index_html.h  
 - pin_config.h  
 
-## Wiring
-- CAN A (MCP2515): connect to the Body CAN bus - Nag Killer (9-10)
+## Wiring model YL
+- CAN A (MCP2515): connect to the Body CAN bus - Nag Killer & adv-eap (9-10)
 - CAN B (TWAI): connect to the Chassis CAN bus - Summon Unlock (13-14)
 
 ## Dashboard Notes
