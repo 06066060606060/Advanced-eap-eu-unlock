@@ -306,6 +306,23 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     z-index: 10;
   }
   .toast.show { opacity: 1; }
+  .seg-row { margin-top: 12px; }
+  .seg {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .seg button {
+    padding: 9px 6px;
+    font-size: 11px;
+    border-radius: 9px;
+  }
+  .seg button.active {
+    background: var(--txt);
+    color: var(--bg);
+    border-color: transparent;
+  }
   .toggle-row {
     display: flex;
     align-items: center;
@@ -314,11 +331,6 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     margin-top: 4px;
   }
   .toggle-row .lbl { font-size: 14px; font-weight: 600; color: var(--txt); text-transform: none; letter-spacing: 0; }
-  .seg-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; }
-  .seg-row .lbl { font-size:14px; font-weight:600; color:var(--txt); min-width:150px; }
-  .seg { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
-  .seg button { padding:8px 11px; border-radius:9px; font-size:11px; }
-  .seg button.active { background:var(--ok); color:#000; border-color:transparent; }
   .switch { position: relative; width: 50px; height: 30px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
   .slider {
@@ -343,24 +355,126 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
   }
   .switch input:checked + .slider { background: var(--ok); border-color: transparent; }
   .switch input:checked + .slider::before { transform: translateX(20px); background: #000; }
+  .model-badge {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 2px 7px;
+  }
+  .iface-note.can-a { color: var(--accent); }
+  .iface-note.can-b { color: var(--ok); }
+  .bus-tag {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    border-radius: 6px;
+    padding: 1px 5px;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .bus-tag.a { color: var(--accent); border: 1px solid var(--accent); }
+  .bus-tag.b { color: var(--ok); border: 1px solid var(--ok); }
 </style>
 </head>
 <body>
 <header>
-  <h1>T2CAN Advanced EAP & EU unlock</h1>
+  <h1>T2CAN Nag-killer & EU unlock <span class="model-badge">Model YL</span></h1>
   <span class="pill" id="conn">connecting…</span>
 </header>
 <div class="tabs">
-  <button class="tab-btn active" onclick="showTab('eap',this)">Advanced EAP</button>
+  <button class="tab-btn active" onclick="showTab('nag',this)">Nag Killer</button>
+  <button class="tab-btn" onclick="showTab('eap',this)">Advanced EAP</button>
   <button class="tab-btn" onclick="showTab('summon',this)">Summon Unlock</button>
   <button class="tab-btn" onclick="showTab('fw',this)">Firmware</button>
 </div>
 
-<!-- ADVANCED EAP TAB -->
-<main id="main-eap" class="active">
+<!-- NAG ECHO TAB -->
+<main id="main-nag" class="active">
 
   <section class="panel">
-    <h2>Auto Blinker <span class="iface-note">TX 0x249 — CAN A</span></h2>
+    <h2>Mode <span class="iface-note">CAN A — MCP2515</span></h2>
+    <div class="tbar" style="margin-top:0">
+      <button id="modeA" class="primary">A — Simple</button>
+      <button id="modeB">B — TSL6P (burst/pause)</button>
+      <button id="modeR" class="danger" style="margin-left:auto">Reset</button>
+    </div>
+    <div class="desc">
+      <b>A</b>: CAN 0x370, fixed +1.80 Nm, handsOn=1 always.<br>
+      <b>B</b>: Configurable target CAN ID, default 0x370, torque cycle, time-bursty (<span id="lbl_burst">1000</span> ms inject / <span id="lbl_pause">1500</span> ms rest).
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Live</h2>
+    <div class="row">
+      <div class="stat"><div class="k">Enabled</div><div class="v" id="s_en">—</div></div>
+      <div class="stat"><div class="k">Rx frames</div><div class="v" id="s_rx">0</div></div>
+      <div class="stat"><div class="k">Echo sent</div><div class="v" id="s_echo">0</div></div>
+      <div class="stat"><div class="k">Tx ok / fail</div><div class="v" id="s_tx">0/0</div></div>
+      <div class="stat"><div class="k">Last latency</div><div class="v" id="s_lat">—</div></div>
+      <div class="stat"><div class="k">HandsOn (real)</div><div class="v" id="s_ho">—</div></div>
+      <div class="stat"><div class="k">Torque (real)</div><div class="v" id="s_tq">—</div></div>
+      <div class="stat"><div class="k">Last injected</div><div class="v" id="s_inj">—</div></div>
+      <div class="stat"><div class="k">CAN A state</div><div class="v" id="s_cs">—</div></div>
+      <div class="stat full"><div class="k">Uptime</div><div class="v" id="s_up">—</div></div>
+    </div>
+    <div class="tbar">
+      <button id="toggle" disabled>Disable</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Advanced — runtime overrides</h2>
+    <div class="row row3">
+      <label>Target CAN ID (hex)
+        <input type="text" id="f_id" placeholder="0x370">
+      </label>
+      <label>AP state ID (hex)
+        <input type="text" id="f_apId" placeholder="0x399">
+      </label>
+      <label>Steering ID (hex)
+        <input type="text" id="f_stId" placeholder="0x129">
+      </label>
+    </div>
+    <div class="row row3" style="margin-top:10px">
+      <label>Burst (ms, mode B)
+        <input type="number" id="f_burst" min="50" max="10000" step="50">
+      </label>
+      <label>Pause (ms, mode B)
+        <input type="number" id="f_pause" min="0" max="10000" step="50">
+      </label>
+      <label>HandsOn=1 rate (%)
+        <input type="number" id="f_ho" min="0" max="100" step="1">
+      </label>
+    </div>
+    <details>
+      <summary>Torque table (used by modes A/B)</summary>
+      <table>
+        <thead><tr><th>#</th><th>byte2 (hex)</th><th>byte3 (hex)</th><th>Nm</th></tr></thead>
+        <tbody id="tq_tbody"></tbody>
+      </table>
+      <div class="tbar">
+        <button id="tq_add">+ row</button>
+        <button id="tq_del">− row</button>
+      </div>
+    </details>
+    <div class="tbar" style="margin-top:14px">
+      <button id="apply" class="primary" style="margin-left:auto" disabled>Apply all overrides</button>
+    </div>
+    <div class="desc">Hard cap: torque clamped to ±1.80 Nm in firmware.</div>
+  </section>
+</main>
+
+
+<!-- ADVANCED EAP TAB -->
+<main id="main-eap">
+  <section class="panel">
+    <h2>Auto Blinker <span class="iface-note can-b">CAN B — TWAI</span></h2>
     <div class="toggle-row">
       <span class="lbl">Enable auto blinker</span>
       <label class="switch" style="margin:0">
@@ -369,10 +483,10 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
       </label>
     </div>
     <div class="desc">
-      Triggered when <b>DAS_behaviorType</b> (0x24A · <b>DAS_visualDebug</b>) becomes <b>LANE_CHANGE_LEFT (2)</b> or <b>LANE_CHANGE_RIGHT (3)</b>, while <b>Autopilot</b> is active or <b>Force Mode</b> is enabled. The trigger is delayed by <b>N ms</b> after detection; the delay is configurable below.<br>
-      Sends <b>SCCM_turnIndicatorStalkStatus</b> (0x249) as a <b>single pulse</b> (~350 ms) through <b>CAN A (MCP2515)</b>. One lane-change event produces one pulse and the native three-blink behavior.<br>
-      <b>Soft</b> behavior: left → DOWN_1, right → UP_1.<br>
-      Checksum and rolling counter are calculated from the reverse-engineered SCCM model. UP values are log-verified; DOWN values are extrapolated. Test while stationary / in Park first.
+      Direction source: <b>DAS_behaviorType</b> on <b>0x24A / DAS_visualDebug</b>.<br>
+      <b>2 = LANE_CHANGE_LEFT</b> and <b>3 = LANE_CHANGE_RIGHT</b>.<br>
+      The trigger is delayed before sending <b>SCCM_turnIndicatorStalkStatus</b> on <b>0x249</b> through CAN B.
+      One event generates one soft pulse with the native three-blink behavior.
     </div>
     <div class="row" style="margin-top:12px;align-items:flex-end;">
       <div style="flex:1">
@@ -384,31 +498,46 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     <div class="row" style="margin-top:12px">
       <div class="stat"><div class="k">Auto armed</div><div class="v" id="blkA_armed">—</div></div>
       <div class="stat"><div class="k">Countdown</div><div class="v" id="blkA_remain">—</div></div>
-      <div class="stat full"><div class="k">Active delay</div><div class="v" id="blkA_delay_cur">—</div></div>
-    </div>
-    <div class="row" style="margin-top:12px">
       <div class="stat"><div class="k">Autopilot active</div><div class="v" id="blkA_ap">—</div></div>
       <div class="stat"><div class="k">Force Mode</div><div class="v" id="blkA_fm">—</div></div>
-      <div class="stat"><div class="k">UI_ulcBlindSpotConfig (CAN B)</div><div class="v" id="blkA_blindspot">—</div></div>
       <div class="stat"><div class="k">Active turn</div><div class="v" id="blkA_turn">—</div></div>
-      <div class="stat"><div class="k">Tx ok / fail</div><div class="v" id="blkA_tx">0/0</div></div>
-      <div class="stat"><div class="k">CAN A state</div><div class="v" id="blkA_cs">—</div></div>
-      <div class="stat full"><div class="k">Uptime</div><div class="v" id="blkA_up">—</div></div>
+      <div class="stat"><div class="k">TX ok / fail</div><div class="v" id="blkA_tx">0/0</div></div>
+      <div class="stat full"><div class="k">CAN B state</div><div class="v" id="blkA_cs">—</div></div>
     </div>
   </section>
 
   <section class="panel">
-    <h2>Diagnostics 0x249 <span class="iface-note">RX SCCM_leftStalk — CAN A</span></h2>
-    <div class="row" style="margin-top:0">
+    <h2>SCCM Diagnostics <span class="iface-note can-b">0x249 — CAN B</span></h2>
+    <div class="row">
       <div class="stat"><div class="k">Seen on bus</div><div class="v" id="blkA_seen">—</div></div>
-      <div class="stat"><div class="k">Rx count 0x249</div><div class="v" id="blkA_rx249">—</div></div>
+      <div class="stat"><div class="k">RX count</div><div class="v" id="blkA_rx249">—</div></div>
       <div class="stat"><div class="k">Checksum self-test</div><div class="v" id="blkA_st">—</div></div>
-      <div class="stat"><div class="k">Real SCCM counter</div><div class="v" id="blkA_rcnt">—</div></div>
-      <div class="stat"><div class="k">Real SCCM turn</div><div class="v" id="blkA_rturn">—</div></div>
-      <div class="stat"><div class="k">Real checksum (byte 0)</div><div class="v" id="blkA_rck">—</div></div>
+      <div class="stat"><div class="k">Real counter</div><div class="v" id="blkA_rcnt">—</div></div>
+      <div class="stat"><div class="k">Real turn</div><div class="v" id="blkA_rturn">—</div></div>
+      <div class="stat"><div class="k">Real checksum</div><div class="v" id="blkA_rck">—</div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>ULC Configuration Injection <span class="iface-note can-b">0x3F8 — CAN B</span></h2>
+    <div class="seg-row">
+      <span class="lbl">UI_ulcBlindSpotConfig</span>
+      <div class="seg" id="ulcBlindSeg">
+        <button data-value="0">STANDARD</button>
+        <button data-value="1">AGGRESSIVE</button>
+        <button data-value="2">MAD_MAX</button>
+      </div>
+    </div>
+    <div class="seg-row">
+      <span class="lbl">UI_ulcSpeedConfig</span>
+      <div class="seg" id="ulcSpeedSeg">
+        <button data-value="0">STANDARD</button>
+        <button data-value="1">AGGRESSIVE</button>
+        <button data-value="2">MAD_MAX</button>
+      </div>
     </div>
     <div class="desc">
-      Reads the real SCCM frame on CAN A to align our counter before injection. The checksum self-test compares our formula with the real byte 0 and should remain OK. If the RX count stays at 0, the MCP2515 is not receiving frames: check CAN A wiring and termination.
+      Selected values are injected into incoming <b>0x3F8 / UI_driverAssistControl</b> frames while the injection gate is open.
     </div>
   </section>
 </main>
@@ -416,7 +545,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 <!-- SUMMON UNLOCK TAB -->
 <main id="main-summon">
   <section class="panel">
-    <h2>Summon Unlock <span class="iface-note">CAN B — TWAI</span></h2>
+    <h2>Summon Unlock <span class="iface-note can-b">inject CAN B — TWAI (1021)</span></h2>
     <div class="stat full" style="min-height:auto;padding:16px 14px;">
       <div class="k">State</div>
       <div class="big-state off" id="sum_big">—</div>
@@ -460,46 +589,25 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
   </section>
 
   <section class="panel">
-    <h2>Frames CAN</h2>
+    <h2>Frames CAN <span class="iface-note">Model YL routing</span></h2>
+    <div class="desc" style="margin-top:0;margin-bottom:12px">
+      <span class="bus-tag a">CAN A</span> status 280 / 390 / 921 read on MCP2515 (same CAN A bus as the Nag Killer).<br>
+      <span class="bus-tag b">CAN B</span> 1016 (SPR) + 1021 injection on TWAI.
+    </div>
     <div class="row">
-      <div class="stat"><div class="k">280 (gear/ACA)</div><div class="v" id="sum_s_280">—</div></div>
-      <div class="stat"><div class="k">390 (DIF gear)</div><div class="v" id="sum_s_390">—</div></div>
-      <div class="stat"><div class="k">921 (AP status)</div><div class="v" id="sum_s_921">—</div></div>
-      <div class="stat"><div class="k">1016 (SPR)</div><div class="v" id="sum_s_1016">—</div></div>
-      <div class="stat"><div class="k">1021 mux1 rx</div><div class="v" id="sum_s_rx">—</div></div>
-      <div class="stat"><div class="k">TX ok</div><div class="v ok" id="sum_s_ok">—</div></div>
-      <div class="stat"><div class="k">TX fail</div><div class="v" id="sum_s_fail">—</div></div>
+      <div class="stat"><div class="k">280 (gear/ACA) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_280">—</div></div>
+      <div class="stat"><div class="k">390 (DIF gear) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_390">—</div></div>
+      <div class="stat"><div class="k">921 (AP status) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_921">—</div></div>
+      <div class="stat"><div class="k">1016 (SPR) <span class="bus-tag b">B</span></div><div class="v" id="sum_s_1016">—</div></div>
+      <div class="stat"><div class="k">1021 mux1 rx <span class="bus-tag b">B</span></div><div class="v" id="sum_s_rx">—</div></div>
+      <div class="stat"><div class="k">TX ok <span class="bus-tag b">B</span></div><div class="v ok" id="sum_s_ok">—</div></div>
+      <div class="stat"><div class="k">TX fail <span class="bus-tag b">B</span></div><div class="v" id="sum_s_fail">—</div></div>
       <div class="stat"><div class="k">CAN B state</div><div class="v" id="sum_s_can">—</div></div>
       <div class="stat full"><div class="k">Uptime</div><div class="v" id="sum_s_up">—</div></div>
     </div>
-  </section>
-
+  
   <section class="panel">
-    <h2>ULC Configuration Injection <span class="iface-note">0x3F8 — CAN B</span></h2>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcBlindSpotConfig</span>
-      <div class="seg" id="ulcBlindSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
-      </div>
-    </div>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcSpeedConfig</span>
-      <div class="seg" id="ulcSpeedSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
-      </div>
-    </div>
-    <div class="seg-row">
-
-    </div>
-    <div class="desc">Selected values are injected into incoming <b>0x3F8 UI_driverAssistControl</b> frames on CAN B while the injection gate is open.</div>
-  </section>
-
-  <section class="panel">
-    <h2>TLSSC Restore For banned car only<span class="iface-note">CAN B — TWAI</span></h2>
+    <h2>TLSSC Restore Banned car Only<span class="iface-note can-b">CAN B — TWAI</span></h2>
     <div class="toggle-row">
       <span class="lbl">TLSSC Restore</span>
       <label class="switch" style="margin:0">
@@ -508,7 +616,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
       </label>
     </div>
     <div class="desc">
-      Forces the low 6 bits of byte 0 on <b>0x331</b> to <b>0x1B</b>, setting both DAS_autopilot and DAS_autopilotBase to SELF_DRIVING (3).<br>
+      Forces the low 6 bits of byte 0 on <b>0x331</b> to <b>0x1B</b>.
       Disabled by default. Applied only while the injection gate is open.
     </div>
   </section>
@@ -521,8 +629,8 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     <div class="row" style="margin-bottom:12px;">
       <div class="stat"><div class="k">Version</div><div class="v" id="fw_ver">—</div></div>
       <div class="stat"><div class="k">Free heap</div><div class="v" id="fw_free">—</div></div>
-      <div class="stat"><div class="k">MCP2515 (CAN A)</div><div class="v" id="fw_mcp">—</div></div>
-      <div class="stat"><div class="k">TWAI (CAN B)</div><div class="v" id="fw_twai">—</div></div>
+      <div class="stat"><div class="k">MCP2515 (CAN A) — nag + summon status</div><div class="v" id="fw_mcp">—</div></div>
+      <div class="stat"><div class="k">TWAI (CAN B) — summon inject 1021</div><div class="v" id="fw_twai">—</div></div>
       <div class="stat full"><div class="k">Boot count</div><div class="v" id="fw_boot">—</div></div>
     </div>
     <input type="file" id="otaFile" accept=".bin">
@@ -538,7 +646,8 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
 
 <div class="footer">
   T2CAN Unified ·
-  <a href="/api/blinkA/stats" target="_blank">/api/blinkA/stats (EAP)</a> ·
+  <a href="/api/nag/config" target="_blank">/api/nag/config</a> ·
+  <a href="/api/nag/stats" target="_blank">/api/nag/stats</a> ·
   <a href="/api/summon/stats" target="_blank">/api/summon/stats</a> ·
   <a href="/api/system/stats" target="_blank">/api/system/stats</a><br>
   research / educational only · not for use on public roads
@@ -564,89 +673,279 @@ function showToast(msg) {
   showToast._h = setTimeout(() => t.classList.remove('show'), 1500);
 }
 
-// ===== ADVANCED EAP JS (Auto Blinker + Manual) =====
-const BLINKA_CAN_STATES = ['running','recovering','bus-off','stopped'];
-const BLINKA_REQ = ['NONE','LEFT','RIGHT'];
-const TURN_NAMES = {0:'IDLE',2:'UP_1',4:'UP_2',7:'DOWN_1',8:'DOWN_2',5:'SNA'};
 
-async function fetchBlinkAStats() {
+// ===== ADVANCED EAP JS =====
+const BLINKA_CAN_STATES = ['ready','not ready'];
+const TURN_NAMES = {0:'IDLE',2:'UP_1',4:'UP_2',7:'DOWN_1',8:'DOWN_2'};
+
+function setUlcSegment(id, value) {
+  document.querySelectorAll('#' + id + ' button').forEach(b => {
+    b.classList.toggle('active', Number(b.dataset.value) === Number(value));
+  });
+}
+
+async function fetchEapStats() {
   try {
-    const s = await fetch('/api/blinkA/stats').then(r => r.json());
-    $('blkA_ap').textContent  = s.apActive ? 'YES' : 'no';
-    $('blkA_fm').textContent  = s.forceMode ? 'YES' : 'no';
+    const s = await fetch('/api/blinkA/stats', {cache:'no-store'}).then(r => r.json());
 
-    try {
-      const d = await fetch('/api/das/stats').then(r => r.json());
-      if (d.ulcBlindSpotConfig !== undefined) {
-        $('blkA_blindspot').textContent = String(d.ulcBlindSpotConfig);
-      }
-    } catch {}
-
-    if (s.activeTurn !== undefined)
-      $('blkA_turn').textContent = (TURN_NAMES[s.activeTurn] ?? String(s.activeTurn)) + ' (' + s.activeTurn + ')';
-
+    $('blkA_ap').textContent = s.apActive ? 'YES' : 'NO';
+    $('blkA_fm').textContent = s.forceMode ? 'YES' : 'NO';
+    $('blkA_turn').textContent = TURN_NAMES[s.activeTurn] ?? String(s.activeTurn);
     $('blkA_tx').textContent = s.txOk + '/' + s.txFail;
 
-    const cs = BLINKA_CAN_STATES[s.canAState] ?? String(s.canAState);
-    $('blkA_cs').textContent = cs;
-    $('blkA_cs').className   = 'v ' + (s.canAState === 0 ? 'ok' : s.canAState === 2 ? 'bad' : 'warn');
-
-    const u = s.uptimeS;
-    $('blkA_up').textContent = u < 60 ? u + 's' : Math.floor(u/60) + 'm' + (u%60) + 's';
+    $('blkA_cs').textContent = s.canBState ? 'READY' : 'NOT READY';
+    $('blkA_cs').className = 'v ' + (s.canBState ? 'ok' : 'bad');
 
     const tg = $('blinkAToggle');
     if (tg && document.activeElement !== tg) tg.checked = !!s.enabled;
 
-    // Delayed trigger: delay, armed state, and countdown
-    if (s.delayMs !== undefined) {
-      $('blkA_delay_cur').textContent = s.delayMs + ' ms';
-      const din = $('blkA_delay_in');
-      if (din && document.activeElement !== din) din.value = s.delayMs;
-    }
-    if (s.autoArmed !== undefined) {
-      const ar = $('blkA_armed');
-      ar.textContent = s.autoArmed ? ('ARMED ' + (BLINKA_REQ[s.autoPending] ?? s.autoPending)) : 'idle';
-      ar.className   = 'v ' + (s.autoArmed ? 'warn' : '');
-      $('blkA_remain').textContent = s.autoArmed ? ((s.autoRemainMs ?? 0) + ' ms') : '—';
-    }
+    $('blkA_delay_in').value = s.delayMs;
+    $('blkA_armed').textContent = s.autoArmed ? 'ARMED' : 'IDLE';
+    $('blkA_armed').className = 'v ' + (s.autoArmed ? 'warn' : '');
+    $('blkA_remain').textContent = s.autoArmed ? (s.autoRemainMs + ' ms') : '—';
 
-    // Diagnostics 0x249 (CAN A): confirms reception and checksum calculation
-    if (s.rx249 !== undefined) {
-      const seen = $('blkA_seen');
-      seen.textContent = s.seen249 ? 'YES' : 'no';
-      seen.className   = 'v ' + (s.seen249 ? 'ok' : 'bad');
-      $('blkA_rx249').textContent = s.rx249;
-      const st = $('blkA_st');
-      if (!s.seen249) { st.textContent = '—'; st.className = 'v'; }
-      else { st.textContent = s.cksumSelfTest ? 'OK' : 'MISMATCH'; st.className = 'v ' + (s.cksumSelfTest ? 'ok' : 'bad'); }
-      $('blkA_rcnt').textContent  = s.realCounter;
-      $('blkA_rturn').textContent = (TURN_NAMES[s.realTurn] ?? String(s.realTurn)) + ' (' + s.realTurn + ')';
-      $('blkA_rck').textContent   = '0x' + Number(s.realCksum).toString(16).toUpperCase().padStart(2,'0');
-    }
-  } catch {}
+    $('blkA_seen').textContent = s.seen249 ? 'YES' : 'NO';
+    $('blkA_seen').className = 'v ' + (s.seen249 ? 'ok' : 'bad');
+    $('blkA_rx249').textContent = s.rx249;
+    $('blkA_rcnt').textContent = s.realCounter;
+    $('blkA_rturn').textContent = TURN_NAMES[s.realTurn] ?? String(s.realTurn);
+    $('blkA_rck').textContent = '0x' + Number(s.realCksum).toString(16).toUpperCase().padStart(2,'0');
+
+    const st = $('blkA_st');
+    st.textContent = s.seen249 ? (s.cksumSelfTest ? 'OK' : 'MISMATCH') : '—';
+    st.className = 'v ' + (s.seen249 ? (s.cksumSelfTest ? 'ok' : 'bad') : '');
+
+    const sum = await fetch('/api/summon/stats', {cache:'no-store'}).then(r => r.json());
+    setUlcSegment('ulcBlindSeg', sum.ulcBlind ?? 0);
+    setUlcSegment('ulcSpeedSeg', sum.ulcSpeed ?? 0);
+  } catch(e) {
+    // Keep the last known values.
+  }
 }
 
 async function postBlinkA(url) {
-  await fetch(url, { method: 'POST' });
-  fetchBlinkAStats();
+  await fetch(url, {method:'POST'});
+  fetchEapStats();
 }
 
-$('blinkAToggle').addEventListener('change', (e) => {
+$('blinkAToggle').addEventListener('change', e => {
   postBlinkA(e.target.checked ? '/api/blinkA/enable' : '/api/blinkA/disable');
   showToast(e.target.checked ? 'Auto blinker enabled' : 'Auto blinker disabled');
 });
 
-
 function applyBlinkADelay() {
   let v = parseInt($('blkA_delay_in').value, 10);
-  if (isNaN(v)) v = 3000;
+  if (!Number.isFinite(v)) v = 3000;
   v = Math.max(0, Math.min(30000, v));
   $('blkA_delay_in').value = v;
   postBlinkA('/api/blinkA/delay?ms=' + v);
-  showToast('Auto delay = ' + v + ' ms');
+  showToast('Delay set to ' + v + ' ms');
 }
 $('blkA_delay_apply').addEventListener('click', applyBlinkADelay);
-$('blkA_delay_in').addEventListener('keydown', (e) => { if (e.key === 'Enter') applyBlinkADelay(); });
+$('blkA_delay_in').addEventListener('keydown', e => { if (e.key === 'Enter') applyBlinkADelay(); });
+
+async function setUlcConfig(kind, value) {
+  const s = await fetch('/api/summon/stats', {cache:'no-store'}).then(r => r.json());
+  let blind = s.ulcBlind ?? 0;
+  let speed = s.ulcSpeed ?? 0;
+  if (kind === 'blind') blind = Number(value);
+  if (kind === 'speed') speed = Number(value);
+  await fetch('/api/summon/ulc-config?blind=' + blind + '&speed=' + speed, {method:'POST'});
+  fetchEapStats();
+  showToast('ULC configuration updated');
+}
+document.querySelectorAll('#ulcBlindSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('blind', b.dataset.value)));
+document.querySelectorAll('#ulcSpeedSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('speed', b.dataset.value)));
+
+// ===== NAG ECHO JS =====
+let nagCfg = null;
+let nagIsLoading = false;
+
+function nmFromBytes(b2, b3) {
+  const raw = ((b2 & 0x0F) << 8) | (b3 & 0xFF);
+  return (raw * 0.01 - 20.5);
+}
+
+function renderNagTorque() {
+  if (!nagCfg || !nagCfg.torque) return;
+  const tb = $('tq_tbody');
+  tb.innerHTML = '';
+  nagCfg.torque.forEach((t, i) => {
+    const tr = document.createElement('tr');
+    const b2Hex = '0x' + t.b2.toString(16).padStart(2,'0').toUpperCase();
+    const b3Hex = '0x' + t.b3.toString(16).padStart(2,'0').toUpperCase();
+    tr.innerHTML = `<td>${i}</td>
+      <td><input type="text" data-i="${i}" data-k="b2" value="${b2Hex}"></td>
+      <td><input type="text" data-i="${i}" data-k="b3" value="${b3Hex}"></td>
+      <td id="nm_${i}">${nmFromBytes(t.b2,t.b3).toFixed(2)}</td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
+    const i = +e.target.dataset.i, k = e.target.dataset.k;
+    const v = parseInt(e.target.value, 16);
+    if (Number.isFinite(v) && nagCfg && nagCfg.torque[i]) {
+      nagCfg.torque[i][k] = v & 0xFF;
+      $(`nm_${i}`).textContent = nmFromBytes(nagCfg.torque[i].b2, nagCfg.torque[i].b3).toFixed(2);
+    }
+  }));
+}
+
+function renderNagConfig() {
+  if (!nagCfg) return;
+  $('f_id').value    = '0x' + nagCfg.targetId.toString(16).toUpperCase().padStart(3,'0');
+  $('f_apId').value  = '0x' + nagCfg.apStateId.toString(16).toUpperCase().padStart(3,'0');
+  $('f_stId').value  = '0x' + nagCfg.steeringId.toString(16).toUpperCase().padStart(3,'0');
+  $('f_ho').value    = nagCfg.hoRatePct;
+  $('f_burst').value = nagCfg.burstMs;
+  $('f_pause').value = nagCfg.pauseMs;
+  $('lbl_burst').textContent = nagCfg.burstMs;
+  $('lbl_pause').textContent = nagCfg.pauseMs;
+  $('toggle').textContent = nagCfg.enabled ? 'Disable' : 'Enable';
+  [['modeA',0],['modeB',1]].forEach(([id,m]) => { const el = $(id); if (el) el.classList.toggle('primary', nagCfg.mode === m); });
+  renderNagTorque();
+}
+
+async function loadNagConfig() {
+  try {
+    const r = await fetch('/api/nag/config');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    nagCfg = await r.json();
+    renderNagConfig();
+    $('toggle').disabled = false;
+    $('apply').disabled = false;
+    $('modeA').disabled = false;
+    $('modeB').disabled = false;
+    $('modeR').disabled = false;
+    $('tq_add').disabled = false;
+    $('tq_del').disabled = false;
+  } catch(e) {
+    console.error('Failed to load nag config:', e);
+    $('conn').textContent = 'nag cfg error';
+    $('conn').className = 'pill bad';
+    setTimeout(loadNagConfig, 2000);
+  }
+}
+
+let nagLastOkMs = 0;
+async function tickNagStats() {
+  if (nagIsLoading) return;
+  try {
+    nagIsLoading = true;
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), 1200);
+    const r = await fetch('/api/nag/stats', { cache:'no-store', signal: ctrl.signal });
+    clearTimeout(to);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const s = await r.json();
+    $('s_rx').textContent   = s.rx;
+    $('s_echo').textContent = s.echo;
+    $('s_tx').textContent   = s.txOk + ' / ' + s.txFail;
+    $('s_lat').textContent  = s.latUs + ' µs';
+    $('s_ho').textContent   = s.ho;
+    $('s_tq').textContent   = (s.torque>=0?'+':'') + s.torque.toFixed(2) + ' Nm';
+    $('s_inj').textContent  = (s.injNm>=0?'+':'') + s.injNm.toFixed(2) + ' Nm  ho=' + s.injHo;
+    const cs = ['OK','running','bus-off','error'][s.canAState] || String(s.canAState);
+    $('s_cs').textContent = cs;
+    $('s_cs').className = 'v ' + (s.canAState===0?'ok':s.canAState===1?'ok':'bad');
+    $('s_up').textContent   = s.uptimeS + ' s';
+    $('conn').textContent  = 'connected';
+    $('conn').className    = 'pill ok';
+    $('s_en').textContent   = nagCfg && nagCfg.enabled ? 'YES' : 'NO';
+    $('s_en').className     = 'v ' + (nagCfg && nagCfg.enabled ? 'ok' : 'warn');
+    nagLastOkMs = Date.now();
+  } catch(e) {
+    if (Date.now() - nagLastOkMs > 3000) {
+      $('conn').textContent = 'lost';
+      $('conn').className   = 'pill bad';
+    }
+  } finally {
+    nagIsLoading = false;
+  }
+}
+
+async function setNagMode(m) {
+  if (!nagCfg) { showToast('not ready'); return; }
+  try {
+    const r = await fetch('/api/nag/mode?m=' + m, { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    nagCfg = await r.json();
+    renderNagConfig();
+    showToast('mode applied');
+  } catch(e) {
+    showToast('error: ' + e.message);
+  }
+}
+
+async function applyNagOverrides() {
+  if (!nagCfg || !nagCfg.torque) { showToast('not ready'); return; }
+  try {
+    const id   = parseInt($('f_id').value, 16);
+    const apId = parseInt($('f_apId').value, 16);
+    const stId = parseInt($('f_stId').value, 16);
+    const ho   = +$('f_ho').value;
+    const burst= +$('f_burst').value;
+    const pause= +$('f_pause').value;
+    if (!Number.isFinite(id) || !Number.isFinite(apId) || !Number.isFinite(stId)) {
+      showToast('invalid hex ID'); return;
+    }
+    const params = new URLSearchParams();
+    params.set('targetId',  String(id));
+    params.set('apStateId', String(apId));
+    params.set('steeringId',String(stId));
+    params.set('hoRatePct', String(ho));
+    params.set('burstMs',   String(burst));
+    params.set('pauseMs',   String(pause));
+    params.set('count', String(nagCfg.torque.length));
+    nagCfg.torque.forEach((t, i) => {
+      params.set('b2_' + i, String(t.b2));
+      params.set('b3_' + i, String(t.b3));
+    });
+    const r = await fetch('/api/nag/update?' + params, { method: 'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    nagCfg = await r.json();
+    renderNagConfig();
+    showToast('saved');
+  } catch(e) {
+    showToast('error: ' + e.message);
+  }
+}
+
+$('modeA').onclick  = () => setNagMode(0);
+$('modeB').onclick  = () => setNagMode(1);
+$('modeR').onclick  = async () => {
+  if (!nagCfg) { showToast('not ready'); return; }
+  if (!confirm('Reset all settings to Mode A defaults?')) return;
+  try {
+    const r = await fetch('/api/nag/reset', { method:'POST' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    nagCfg = await r.json();
+    renderNagConfig();
+    showToast('reset');
+  } catch(e) {
+    showToast('error: ' + e.message);
+  }
+};
+$('apply').onclick  = applyNagOverrides;
+$('toggle').onclick = () => {
+  if (!nagCfg) { showToast('not ready'); return; }
+  const params = new URLSearchParams({ enabled: nagCfg.enabled ? '0' : '1' });
+  fetch('/api/nag/update?' + params, { method:'POST' })
+    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(c => { nagCfg = c; renderNagConfig(); showToast(nagCfg.enabled ? 'enabled' : 'disabled'); })
+    .catch(e => showToast('error: ' + e.message));
+};
+$('tq_add').onclick = () => {
+  if (!nagCfg || !nagCfg.torque) return;
+  if (nagCfg.torque.length >= 8) { showToast('max 8 entries'); return; }
+  nagCfg.torque.push({ b2: 0x08, b3: 0xB6 });
+  renderNagTorque();
+};
+$('tq_del').onclick = () => {
+  if (!nagCfg || !nagCfg.torque) return;
+  if (nagCfg.torque.length <= 1) { showToast('min 1 entry'); return; }
+  nagCfg.torque.pop();
+  renderNagTorque();
+};
 
 // ===== SUMMON UNLOCK JS =====
 const SUMMON_CAN_STATES = ['running','recovering','bus-off','stopped'];
@@ -702,9 +1001,6 @@ async function fetchSummonStats() {
     const u = s.uptimeS;
     $('sum_s_up').textContent = u < 60 ? u + 's' : Math.floor(u/60) + 'm' + (u%60) + 's';
 
-    setUlcSegment('ulcBlindSeg', s.ulcBlind ?? 0);
-    setUlcSegment('ulcSpeedSeg', s.ulcSpeed ?? 0);
-  
     const tg = $('tlsscToggle');
     if (tg && document.activeElement !== tg) tg.checked = !!s.tlssc;
     const tr = $('tlsscRestoreToggle');
@@ -732,32 +1028,6 @@ $('tlsscRestoreToggle').addEventListener('change', (e) => {
   postSummon(e.target.checked ? '/api/summon/tlrst-enable' : '/api/summon/tlrst-disable');
   showToast(e.target.checked ? 'TLSSC Restore enabled' : 'TLSSC Restore disabled');
 });
-
-// ===== ULC CONFIGURATION INJECTION JS =====
-const ULC_NAMES = {
-  blind: ['STANDARD','AGGRESSIVE','MAD_MAX'],
-  speed: ['STANDARD','AGGRESSIVE','MAD_MAX'],
-};
-
-function setUlcSegment(id, value) {
-  document.querySelectorAll('#' + id + ' button').forEach(b => {
-    b.classList.toggle('active', Number(b.dataset.value) === Number(value));
-  });
-}
-
-async function setUlcConfig(kind, value) {
-  const s = await fetch('/api/summon/stats').then(r => r.json());
-  let blind = s.ulcBlind ?? 0;
-  let speed = s.ulcSpeed ?? 0;
-  if (kind === 'blind') blind = Number(value);
-  if (kind === 'speed') speed = Number(value);
-  await fetch('/api/summon/ulc-config?blind=' + blind + '&speed=' + speed, {method:'POST'});
-  fetchSummonStats();
-  showToast('ULC configuration updated');
-}
-
-document.querySelectorAll('#ulcBlindSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('blind', b.dataset.value)));
-document.querySelectorAll('#ulcSpeedSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('speed', b.dataset.value)));
 
 // ===== FIRMWARE / SYSTEM JS =====
 async function fetchSystemStats() {
@@ -850,8 +1120,9 @@ function uploadOta() {
 }
 
 // ===== STARTUP =====
-fetchBlinkAStats();
-setInterval(() => { if (!otaUploading) fetchBlinkAStats(); }, 500);
+loadNagConfig().then(() => { tickNagStats(); setInterval(() => { if (!otaUploading) tickNagStats(); }, 500); });
+fetchEapStats();
+setInterval(() => { if (!otaUploading) fetchEapStats(); }, 500);
 fetchSummonStats();
 setInterval(() => { if (!otaUploading) fetchSummonStats(); }, 800);
 fetchSystemStats();
