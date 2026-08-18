@@ -38,6 +38,8 @@ CAN B Chassis CAN → EU Summon Unlock
 
 ## Hardware Target
 
+⚠️ Do not enable TLSSC if you do not have the EAP option.
+
 This fork was adapted for:
 
 | Device                       | Can Transceiver                 | CAN RX / CAN TX   | Can Bus      | Power                     |
