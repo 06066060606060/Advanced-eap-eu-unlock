@@ -10,7 +10,7 @@
 
 ⚠️ you will need another esp32 for Nag-Killer on party CAN.
 
-CAN A Body CAN → Advanced EAP
+CAN A Body CAN → Advanced EAP  
 CAN B Chassis CAN → EU Summon Unlock
 
 -----------------Advanced EAP----------------  
