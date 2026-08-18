@@ -7,7 +7,8 @@
 ---
 
 ## Version1.0a 
-
+-----------------Nag Killer------------------  
+- remove nag
 -----------------Advanced EAP----------------  
 - automatically activates the turn signal (delay can be set on the dashboard)  
 - All lane change safety features are maintained.  
