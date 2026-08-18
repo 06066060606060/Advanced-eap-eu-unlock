@@ -7,7 +7,7 @@
 ---
 
 ## Version1.0a 
------------------Nag Killer------------------  
+-----------------Nag Killer------------------    
 - remove nag  
 -----------------Advanced EAP----------------  
 - automatically activates the turn signal (delay can be set on the dashboard)  
