@@ -20,6 +20,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - you can always cancel on screen or with opposite turn signal.  
 
 --------------------EU Unlock------------------
+- Added madmax settings toggle
 - toggle to restore TLSSC on banned car*
 - toggle to activate TLSSC where it is not available.
 - bypass R79 EU restriction in AP
