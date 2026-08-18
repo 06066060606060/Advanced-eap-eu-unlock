@@ -8,9 +8,6 @@
 
 ## Version1.0a 
 
-CAN A Body CAN → Advanced EAP  
-CAN B Chassis CAN → EU Summon Unlock
-
 -----------------Advanced EAP----------------  
 - automatically activates the turn signal (delay can be set on the dashboard)  
 - All lane change safety features are maintained.  
@@ -30,9 +27,6 @@ CAN B Chassis CAN → EU Summon Unlock
 - takes forks and exits automatically (EAP)
 - Continue on Green with Car in Front (EAP)
 - OTA Update
-
-## Branch for Model YL
-- https://github.com/06066060606060/.....
 
 ## Hardware Target
 
