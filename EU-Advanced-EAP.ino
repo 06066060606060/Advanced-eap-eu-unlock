@@ -1,6 +1,18 @@
 // T2CAN Unified - Dual CAN (MCP2515 + TWAI) for LilyGo T-2CAN
-// CAN A (MCP2515) -> Advanced EAP: TX SCCM_leftStalk (585/0x249) + RX SCCM_leftStalk for alignment
-// CAN B (TWAI)    -> Summon Unlock (IDs 280, 390, 921, 1016, 1021) ; 921 = AP status gate
+//
+// Standard model:
+//   CAN A (MCP2515) -> Nag Echo  (ID 0x370)
+//   CAN B (TWAI)    -> Summon Unlock (IDs 280, 390, 921, 1016, 1021)
+//
+// Model YL (set MODEL_YL to 1 below):
+//   CAN A (MCP2515) -> Nag Echo + summon STATUS frames 280 / 390 / 921 / 
+//   CAN B (TWAI)    -> Summon injection only, on 1021 & 1016
+
+// ── Model selection ──
+// 1 = Model YL : summon status frames (280/390/921) are read on CAN A
+//     (MCP2515), alongside the nag-killer. CAN B (TWAI) only carries 1021 & 1016.
+// 0 = Standard : all summon frames (status + 1021) are on CAN B (TWAI).
+#define MODEL_YL 1
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -12,12 +24,15 @@
 #include "driver/twai.h"
 #include "index_html.h"
 
-#define FW_VERSION "EU-Advanced-EAP.v1.2b"
+#define FW_VERSION "ADV-EAP-v1.0a"
 
 // T-2CAN board specific
 #include "pin_config.h"
 #include <mcp2515.h>
 #include <SPI.h>
+
+struct NagConfig;
+struct NagContext;
 
 static unsigned long bootTime = 0;
 static unsigned long canInitTime = 0;
@@ -67,52 +82,398 @@ static unsigned long lastMcpStatusMs = 0;
 static unsigned long lastMcpRecoverMs = 0;
 
 // ═══════════════════════════════════════════════════════════════
-// ADVANCED EAP (CAN A - MCP2515)
-//   TX : SCCM_leftStalk (585 / 0x249) -> auto blinker + manual control
-//   RX : SCCM_leftStalk (585 / 0x249) -> counter/checksum alignment
+// NAG ECHO (CAN A - MCP2515)
 // ═══════════════════════════════════════════════════════════════
 
-static const unsigned long DRIVER_WAKE_DELAY_MS = 10000;
+static const uint16_t NAG_TORQUE_RAW_MAX = 0x8B6;
+static const uint16_t NAG_TORQUE_RAW_MIN = 0x74E;
+static const float    NAG_TORQUE_NM_MAX  = +1.80f;
+static const float    NAG_TORQUE_NM_MIN  = -1.80f;
+static const uint8_t  NAG_MAX_TORQUE_ENTRIES = 8;
+static const unsigned long NAG_DRIVER_WAKE_DELAY_MS = 10000;
+static const unsigned long NAG_INJECTION_DELAY_MS = 15000;
 
-// Diagnostics for the real SCCM_leftStalk frame received on CAN A.
-#define LEFTSTALK_ID 0x249
-static volatile uint32_t rx249 = 0;
-static volatile uint8_t realCounter = 0;
-static volatile uint8_t realTurn = 0;
-static volatile uint8_t realCksum = 0;
-static volatile bool cksumSelfTest = true;
-static volatile bool seen249 = false;
-static portMUX_TYPE blinkAMux = portMUX_INITIALIZER_UNLOCKED;
+enum NagMode : uint8_t { MODE_A = 0, MODE_B = 1, MODE_CUSTOM = 2};
 
-static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len);
-static void handle249OnCanA(const uint8_t *data, uint8_t dlc);
-static void evaluateAutoBlinkerA();
+struct NagConfig {
+  bool     enabled;
+  uint8_t  mode;
+  uint16_t targetId;
+  uint8_t  torqueCount;
+  uint8_t  torqueB2[NAG_MAX_TORQUE_ENTRIES];
+  uint8_t  torqueB3[NAG_MAX_TORQUE_ENTRIES];
+  uint8_t  hoRatePct;
+  uint16_t burstMs;
+  uint16_t pauseMs;
+  uint16_t apStateId;
+  uint8_t  apStateByte;
+  uint8_t  apStateShift;
+  uint8_t  apStateMask;
+  uint8_t  handsOnByte;
+  uint8_t  handsOnShift;
+  uint8_t  handsOnMask;
+  uint16_t steeringId;
+  uint8_t  steeringByteHi;
+  uint8_t  steeringByteLo;
+  float    steeringScale;
+  float    steeringOffset;
+};
 
-static void eapProcessMcpFrame(const struct can_frame& rxf) {
-  uint16_t id = rxf.can_id & 0x7FF;
-  if (id == LEFTSTALK_ID) {
-    handle249OnCanA(rxf.data, rxf.can_dlc);
-  }
+static NagConfig nagCfg;
+static portMUX_TYPE nagCfgMux = portMUX_INITIALIZER_UNLOCKED;
+
+struct NagContext {
+  uint8_t  apState;
+  uint8_t  handsOnState;
+  uint8_t  prevHandsOnState;
+  float    steeringAngleDeg;
+  unsigned long lastApStateMs;
+  unsigned long lastSteeringMs;
+  unsigned long state2EnterMs;
+  unsigned long state3EnterMs;
+  uint16_t walkSeed;
+  float    lastModeCTorqueNm;
+};
+
+static NagContext nagCtx;
+static portMUX_TYPE nagCtxMux = portMUX_INITIALIZER_UNLOCKED;
+
+static volatile uint32_t nagRxFrames    = 0;
+static volatile uint32_t nagEchoCount   = 0;
+static volatile uint32_t nagTxOk        = 0;
+static volatile uint32_t nagTxFail      = 0;
+static volatile uint32_t nagEchoLatUs   = 0;
+static volatile uint8_t  nagRealHo      = 0;
+static volatile float    nagRealTorque  = 0;
+static volatile uint8_t  nagLastInjectedHo = 0;
+static volatile float    nagLastInjectedNm = 0;
+static unsigned long nagLastTxFailLog = 0;
+
+// ── Nag helpers ──
+
+static void nagClampTorque(uint8_t& b2, uint8_t& b3) {
+  uint16_t raw = ((b2 & 0x0F) << 8) | b3;
+  if (raw > NAG_TORQUE_RAW_MAX) raw = NAG_TORQUE_RAW_MAX;
+  if (raw < NAG_TORQUE_RAW_MIN) raw = NAG_TORQUE_RAW_MIN;
+  b2 = (b2 & 0xF0) | ((raw >> 8) & 0x0F);
+  b3 = raw & 0xFF;
 }
 
-// ═══════════════════════════════════════════════════════════════
-// DAS_visualDebug (0x24A / 586) - CAN B
-//   behaviorType = bit 56/2
-// ═══════════════════════════════════════════════════════════════
-#define VISUAL_DEBUG_ID 0x24A
-static volatile uint8_t visualBehaviorType = 0;
-static volatile uint8_t uiUlcBlindSpotConfig = 0;
+static void nagNmToBytes(float nm, uint8_t& b2lo, uint8_t& b3) {
+  if (nm > NAG_TORQUE_NM_MAX) nm = NAG_TORQUE_NM_MAX;
+  if (nm < NAG_TORQUE_NM_MIN) nm = NAG_TORQUE_NM_MIN;
+  uint16_t raw = (uint16_t)((nm + 20.5f) * 100.0f + 0.5f);
+  if (raw > NAG_TORQUE_RAW_MAX) raw = NAG_TORQUE_RAW_MAX;
+  if (raw < NAG_TORQUE_RAW_MIN) raw = NAG_TORQUE_RAW_MIN;
+  b2lo = (raw >> 8) & 0x0F;
+  b3   = raw & 0xFF;
+}
 
-// ULC injection values for 0x3F8 / UI_driverAssistControl.
-// Values are stored in NVS and applied to incoming CAN B frames while the injection gate is open.
-static volatile uint8_t ulcInjectBlindSpotConfig = 0;
-static volatile uint8_t ulcInjectSpeedConfig = 0;
+static void nagCfgSetCommonDefaults(NagConfig& c) {
+  c.enabled        = true;
+  c.burstMs        = 1000;
+  c.pauseMs        = 1500;
+  c.apStateId      = 0x399;
+  c.apStateByte    = 0;
+  c.apStateShift   = 4;
+  c.apStateMask    = 0x0F;
+  c.handsOnByte    = 0;
+  c.handsOnShift   = 0;
+  c.handsOnMask    = 0x0F;
+  c.steeringId     = 0x129;
+  c.steeringByteHi = 1;
+  c.steeringByteLo = 0;
+  c.steeringScale  = 0.1f;
+  c.steeringOffset = 0.0f;
+}
 
-static volatile uint32_t ulcInjectRxCount = 0;
-static volatile uint32_t ulcInjectTxCount = 0;
-static volatile uint32_t ulcInjectTxFail = 0;
-static volatile uint32_t visualDebugRxCount = 0;
-static volatile uint32_t visualDebugLastMs = 0;
+static void nagCfgDefaultsModeA(NagConfig& c) {
+  nagCfgSetCommonDefaults(c);
+  c.mode        = MODE_A;
+  c.targetId    = 0x370;
+  c.torqueCount = 1;
+  c.torqueB2[0] = 0x08;
+  c.torqueB3[0] = 0xB6;
+  c.hoRatePct   = 100;
+}
+static void nagCfgDefaultsModeB(NagConfig& c) {
+  nagCfgSetCommonDefaults(c);
+  c.mode        = MODE_B;
+  c.targetId    = 0x370;
+  c.torqueCount = 4;
+  c.torqueB2[0] = 0x08; c.torqueB3[0] = 0xB6;
+  c.torqueB2[1] = 0x08; c.torqueB3[1] = 0x98;
+  c.torqueB2[2] = 0x07; c.torqueB3[2] = 0x6C;
+  c.torqueB2[3] = 0x07; c.torqueB3[3] = 0x4E;
+  c.hoRatePct   = 100;
+}
+
+
+static void nagCfgClampAll(NagConfig& c) {
+  if (c.torqueCount < 1) c.torqueCount = 1;
+  if (c.torqueCount > NAG_MAX_TORQUE_ENTRIES) c.torqueCount = NAG_MAX_TORQUE_ENTRIES;
+  if (c.hoRatePct > 100) c.hoRatePct = 100;
+  if (c.burstMs < 50)    c.burstMs   = 50;
+  if (c.burstMs > 10000) c.burstMs   = 10000;
+  if (c.pauseMs > 10000) c.pauseMs   = 10000;
+  for (uint8_t i = 0; i < c.torqueCount; i++) nagClampTorque(c.torqueB2[i], c.torqueB3[i]);
+}
+
+static void nagCfgLoad() {
+  Serial.println("NVS: Loading nag config...");
+  if (!prefs.begin("nag", true)) {
+    Serial.println("NVS: No existing nag config, using defaults");
+    nagCfgDefaultsModeA(nagCfg);
+    return;
+  }
+  if (!prefs.isKey("v")) {
+    prefs.end();
+    nagCfgDefaultsModeA(nagCfg);
+    return;
+  }
+  nagCfgSetCommonDefaults(nagCfg);
+  nagCfg.enabled        = prefs.getBool("en", true);
+  nagCfg.mode           = prefs.getUChar("mode", 0);
+  nagCfg.targetId       = prefs.getUShort("id", 0x370);
+  nagCfg.torqueCount    = prefs.getUChar("tc", 1);
+  size_t n = prefs.getBytes("tb2", nagCfg.torqueB2, NAG_MAX_TORQUE_ENTRIES);
+  if (n == 0) { nagCfg.torqueB2[0] = 0x08; }
+  n = prefs.getBytes("tb3", nagCfg.torqueB3, NAG_MAX_TORQUE_ENTRIES);
+  if (n == 0) { nagCfg.torqueB3[0] = 0xB6; }
+  nagCfg.hoRatePct      = prefs.getUChar("ho", 100);
+  nagCfg.burstMs        = prefs.getUShort("bms", 1000);
+  nagCfg.pauseMs        = prefs.getUShort("pms", 1500);
+  nagCfg.apStateId      = prefs.getUShort("apid", 0x399);
+  nagCfg.steeringId     = prefs.getUShort("stid", 0x129);
+  prefs.end();
+  nagCfgClampAll(nagCfg);
+  Serial.println("NVS: Nag config loaded OK");
+}
+
+static void nagCfgSave() {
+  nagCfgClampAll(nagCfg);
+  if (!prefs.begin("nag", false)) {
+    Serial.println("NVS: Nag save failed - could not open");
+    return;
+  }
+  prefs.putBool("en",     nagCfg.enabled);
+  prefs.putUChar("mode",  nagCfg.mode);
+  prefs.putUShort("id",   nagCfg.targetId);
+  prefs.putUChar("tc",    nagCfg.torqueCount);
+  prefs.putBytes("tb2",   nagCfg.torqueB2, NAG_MAX_TORQUE_ENTRIES);
+  prefs.putBytes("tb3",   nagCfg.torqueB3, NAG_MAX_TORQUE_ENTRIES);
+  prefs.putUChar("ho",    nagCfg.hoRatePct);
+  prefs.putUShort("bms",  nagCfg.burstMs);
+  prefs.putUShort("pms",  nagCfg.pauseMs);
+  prefs.putUShort("apid", nagCfg.apStateId);
+  prefs.putUShort("stid", nagCfg.steeringId);
+  prefs.putUChar("v",     2);
+  prefs.end();
+}
+
+// ── Nag decide injection (raw data version) ──
+
+static bool nagDecideInjection(uint8_t dlc,
+                            uint8_t& out_b2, uint8_t& out_b3, bool& out_setHo) {
+  if (dlc < 8) return false;
+  unsigned long now = millis();
+
+  uint8_t  mode, tCount, hoPct;
+  uint16_t burstMs, pauseMs;
+  uint8_t  tB2[NAG_MAX_TORQUE_ENTRIES], tB3[NAG_MAX_TORQUE_ENTRIES];
+
+  portENTER_CRITICAL(&nagCfgMux);
+  mode    = nagCfg.mode;
+  tCount  = nagCfg.torqueCount;
+  hoPct   = nagCfg.hoRatePct;
+  burstMs = nagCfg.burstMs;
+  pauseMs = nagCfg.pauseMs;
+  for (uint8_t i = 0; i < tCount; i++) {
+    tB2[i] = nagCfg.torqueB2[i];
+    tB3[i] = nagCfg.torqueB3[i];
+  }
+  portEXIT_CRITICAL(&nagCfgMux);
+
+  static uint8_t  tIdx = 0;
+  static uint16_t hoSeq = 0;
+  static uint32_t lastChangeMs = 0;
+  static uint8_t  prevMode = 0xFF;
+
+  if (mode != prevMode) {
+    tIdx = 0; hoSeq = 0; lastChangeMs = now; prevMode = mode;
+  }
+
+  if (mode == MODE_A || mode == MODE_CUSTOM) {
+    out_b2 = tB2[tIdx % tCount];
+    out_b3 = tB3[tIdx % tCount];
+    tIdx++;
+    bool setHo = ((hoSeq * 100u) / 65536u < (uint16_t)hoPct);
+    hoSeq = (uint16_t)(hoSeq * 1103u + 12345u);
+    out_setHo = setHo;
+    return true;
+  }
+
+  if (mode == MODE_B) {
+    uint32_t cycleMs = (uint32_t)burstMs + (uint32_t)pauseMs;
+    if (cycleMs == 0) cycleMs = 1;
+    uint32_t phase = (uint32_t)(now - bootTime) % cycleMs;
+    if (phase >= burstMs) return false;
+    if (now - lastChangeMs >= 200) { tIdx = (tIdx + 1) % tCount; lastChangeMs = now; }
+    out_b2 = tB2[tIdx];
+    out_b3 = tB3[tIdx];
+    out_setHo = true;
+    return true;
+  }
+
+  return false;
+}
+
+// ── Nag context updates (raw data) ──
+
+static void nagUpdateApState(const uint8_t* data, uint8_t dlc) {
+  if (dlc < 8) return;
+  uint8_t apb, apsh, apmask, hob, hosh, homask;
+  portENTER_CRITICAL(&nagCfgMux);
+  apb = nagCfg.apStateByte; apsh = nagCfg.apStateShift; apmask = nagCfg.apStateMask;
+  hob = nagCfg.handsOnByte; hosh = nagCfg.handsOnShift; homask = nagCfg.handsOnMask;
+  portEXIT_CRITICAL(&nagCfgMux);
+  if (apb >= dlc || hob >= dlc) return;
+  uint8_t ap = (data[apb] >> apsh) & apmask;
+  uint8_t ho = (data[hob] >> hosh) & homask;
+  unsigned long now = millis();
+  portENTER_CRITICAL(&nagCtxMux);
+  nagCtx.apState = ap;
+  nagCtx.lastApStateMs = now;
+  if (ho != nagCtx.handsOnState) {
+    nagCtx.prevHandsOnState = nagCtx.handsOnState;
+    nagCtx.handsOnState = ho;
+    if (ho == 2 && nagCtx.state2EnterMs == 0) nagCtx.state2EnterMs = now;
+    if (ho != 2) nagCtx.state2EnterMs = 0;
+    if (ho == 3 && nagCtx.state3EnterMs == 0) nagCtx.state3EnterMs = now;
+    if (ho != 3) nagCtx.state3EnterMs = 0;
+  }
+  portEXIT_CRITICAL(&nagCtxMux);
+}
+
+static void nagUpdateSteering(const uint8_t* data, uint8_t dlc) {
+  if (dlc < 8) return;
+  uint8_t bh, bl; float scale, offs;
+  portENTER_CRITICAL(&nagCfgMux);
+  bh = nagCfg.steeringByteHi; bl = nagCfg.steeringByteLo;
+  scale = nagCfg.steeringScale; offs = nagCfg.steeringOffset;
+  portEXIT_CRITICAL(&nagCfgMux);
+  if (bh >= dlc || bl >= dlc) return;
+  int16_t raw = (int16_t)(((uint16_t)data[bh] << 8) | data[bl]);
+  float deg = raw * scale + offs;
+  unsigned long now = millis();
+  portENTER_CRITICAL(&nagCtxMux);
+  nagCtx.steeringAngleDeg = deg;
+  nagCtx.lastSteeringMs = now;
+  portEXIT_CRITICAL(&nagCtxMux);
+}
+
+// ── Forward declarations : summon status handlers (defined in CAN B section) ──
+// On Model YL these are also called from CAN A (MCP2515).
+static void handle280(const uint8_t *data);
+static void handle390(const uint8_t *data);
+static void handle921(const uint8_t *data);
+static void handle1016(const uint8_t *data, uint8_t dlc);
+
+// ── Nag process frame from MCP2515 ──
+
+static void nagProcessMcpFrame(const struct can_frame& rxf) {
+  uint16_t id = rxf.can_id & 0x7FF;
+  uint8_t dlc = rxf.can_dlc;
+  if (dlc < 1) return;
+
+#if MODEL_YL
+  // Model YL : summon STATUS frames 280/390/921 are read on CAN A (MCP2515).
+  // 1016 (SPR) and the 1021 injection stay on CAN B (TWAI).
+  switch (id) {
+    case 280:
+      if (dlc >= 7) handle280(rxf.data);
+      break;
+    case 390:
+      if (dlc >= 8) handle390(rxf.data);
+      break;
+    case 921:
+      if (dlc >= 1) handle921(rxf.data);
+      break;
+    default:
+      break;
+  }
+#endif
+
+  uint16_t targetId, apStateId, steeringId;
+  bool en;
+  portENTER_CRITICAL(&nagCfgMux);
+  targetId   = nagCfg.targetId;
+  apStateId  = nagCfg.apStateId;
+  steeringId = nagCfg.steeringId;
+  en         = nagCfg.enabled;
+  portEXIT_CRITICAL(&nagCfgMux);
+
+  if (id == apStateId)  nagUpdateApState(rxf.data, dlc);
+  if (id == steeringId) nagUpdateSteering(rxf.data, dlc);
+
+  if (id != targetId) return;
+  nagRxFrames++;
+
+  if (dlc < 5) return;
+  uint8_t ho = (rxf.data[4] >> 6) & 0x03;
+  uint16_t tRaw = ((rxf.data[2] & 0x0F) << 8) | rxf.data[3];
+  nagRealHo     = ho;
+  nagRealTorque = tRaw * 0.01f - 20.5f;
+
+  bool isOurs = false;
+  if (ho == 1) {
+    portENTER_CRITICAL(&nagCfgMux);
+    for (uint8_t i = 0; i < nagCfg.torqueCount; i++) {
+      uint16_t cfgRaw = ((nagCfg.torqueB2[i] & 0x0F) << 8) | nagCfg.torqueB3[i];
+      if (tRaw == cfgRaw) { isOurs = true; break; }
+    }
+    portEXIT_CRITICAL(&nagCfgMux);
+  }
+
+  bool bootDelayPassed = (millis() - canInitTime) >= NAG_INJECTION_DELAY_MS;
+  bool canSeen = mcpRxCount > 1000;
+  if (en && bootDelayPassed && canSeen && !isOurs && ho <= 1) {
+    uint8_t b2 = 0, b3 = 0; bool setHo = false;
+    if (nagDecideInjection(dlc, b2, b3, setHo)) {
+      struct can_frame txf;
+      txf.can_id = rxf.can_id;
+      txf.can_dlc = rxf.can_dlc;
+      memcpy(txf.data, rxf.data, 8);
+      txf.data[2] = (txf.data[2] & 0xF0) | (b2 & 0x0F);
+      txf.data[3] = b3;
+      txf.data[4] = setHo ? (txf.data[4] | 0x40) : txf.data[4];
+      txf.data[6] = (txf.data[6] & 0xF0) | (((txf.data[6] & 0x0F) + 1) & 0x0F);
+      uint16_t s = txf.data[0] + txf.data[1] + txf.data[2] + txf.data[3]
+                 + txf.data[4] + txf.data[5] + txf.data[6];
+      txf.data[7] = (uint8_t)((s + 0x73) & 0xFF);
+
+      unsigned long t0 = micros();
+      MCP2515::ERROR err = Can_A.sendMessage(&txf);
+      nagEchoLatUs = micros() - t0;
+
+      if (err == MCP2515::ERROR_OK) {
+        mcpTxOk++; nagEchoCount++;
+        mcpTxFailConsecutive = 0;
+        nagLastInjectedHo = setHo ? 1 : 0;
+        uint16_t raw = ((b2 & 0x0F) << 8) | b3;
+        nagLastInjectedNm = raw * 0.01f - 20.5f;
+      } else {
+        mcpTxFail++;
+        if (mcpTxFailConsecutive < 255) mcpTxFailConsecutive++;
+        unsigned long now = millis();
+        if (now - nagLastTxFailLog >= 2000) {
+          nagLastTxFailLog = now;
+          Serial.printf("[NAG TX FAIL] MCP err=%d total=%lu\n", (int)err, (unsigned long)mcpTxFail);
+        }
+      }
+    }
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SUMMON UNLOCK (CAN B - TWAI)
@@ -144,76 +505,10 @@ static inline uint8_t readDASStatus(const uint8_t *data) {
     return data[0] & 0x07;
 }
 
-// ── Auto Blinker: direction read from DAS_behaviorType on CAN B ──
-// Triggered by DAS_visualDebug.behaviorType (0x24A, bit 56/2 bits):
-//   2 = LANE_CHANGE_LEFT, 3 = LANE_CHANGE_RIGHT.
-// Autopilot active or Force Mode must be active. The trigger is delayed
-// by the configurable auto-blinker delay before the one-shot is sent.
-// The manual override remains available.
-
-static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len) {
-  uint32_t val = 0;
-  for (int i = 0; i < len; i++) {
-    int totalBit = startBit + i;
-    int byteIdx  = totalBit / 8;
-    int bitIdx   = totalBit % 8;
-    if ((data[byteIdx] >> bitIdx) & 0x01) val |= (1UL << i);
-  }
-  return val;
-}
-
-static inline void writeBitsLE(uint8_t *data, int startBit, int len, uint32_t value) {
-  for (int i = 0; i < len; i++) {
-    int totalBit = startBit + i;
-    int byteIdx  = totalBit / 8;
-    int bitIdx   = totalBit % 8;
-    uint8_t mask = (uint8_t)(1U << bitIdx);
-    if (value & (1UL << i)) data[byteIdx] |= mask;
-    else                    data[byteIdx] &= (uint8_t)~mask;
-  }
-}
-
-#define STALK_IDLE   0
-#define STALK_UP_1   2
-#define STALK_DOWN_1 7
-
-#define BLINKA_TX_PERIOD_MS 20
-#define BLINKA_PULSE_MS 350
-#define BLINKA_AUTO_DELAY_DEFAULT_MS 3000
-
-// ── SCCM_leftStalk checksum (585 / 0x249) ──
-// Reverse-engineered from real CAN logs: this is NOT a CRC.
-// Evidence: counters 3 and 4 both produce 0xD3 (7 and 9 -> 0x5E),
-// which is impossible for a CRC-8. The separable model was verified
-// on 92 frames with zero errors:
-//     checksum = CKSUM_CTR[counter] XOR turnLinear(turn)
-// CKSUM_CTR: fixed table indexed by the counter (0..15), fully observed.
-// turnLinear: linear XOR contribution for each bit of the turn nibble.
-// NOTE: turn=2 (UP_1) and turn=4 (UP_2) are verified by the log.
-// turn=7 (DOWN_1) and turn=8 (DOWN_2) are extrapolated (no DOWN frame was captured).
-static const uint8_t CKSUM_CTR[16] = {
-  0x9B, 0xE8, 0x2A, 0xD3, 0xD3, 0x83, 0x4C, 0x5E,
-  0x3F, 0x5E, 0xE2, 0x28, 0x3A, 0x13, 0xAF, 0xCE
-};
-static inline uint8_t turnLinear(uint8_t turn) {
-  uint8_t r = 0;
-  if (turn & 0x01) r ^= 0x0E;
-  if (turn & 0x02) r ^= 0x1C;
-  if (turn & 0x04) r ^= 0x38;
-  if (turn & 0x08) r ^= 0x70;
-  return r;
-}
-static inline uint8_t leftStalkChecksum(uint8_t counter, uint8_t turn) {
-  return CKSUM_CTR[counter & 0x0F] ^ turnLinear(turn & 0x0F);
-}
-// Rolling counter 0..15 for injected frames.
-static volatile uint8_t blinkACounter = 0;
-
 static volatile bool forceMode = false;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool summonEnabled = true;
 static volatile bool tlsscEnabled  = false;   // "Enable TLSSC" - off by default
-static volatile bool tlsscRestoreEnabled = false;   // "TLSSC Restore" - off by default
 static volatile bool gateAPActive  = false;
 static volatile bool gateParked    = true;
 static volatile bool gateSummoning = false;
@@ -230,21 +525,272 @@ static volatile uint32_t sumRx390    = 0;
 static volatile uint32_t sumRx921    = 0;
 static volatile uint32_t sumRx1016   = 0;
 static char gateBlockReason[48] = "boot";
+// ═══════════════════════════════════════════════════════════════
+// ADVANCED EAP (CAN B - TWAI)
+//   RX/TX SCCM_turnIndicatorStalkStatus (0x249)
+//   RX DAS_visualDebug.behaviorType (0x24A)
+//   RX/TX UI_driverAssistControl (0x3F8)
+// ═══════════════════════════════════════════════════════════════
 
-static volatile bool    blinkAEnabled           = true;
-static volatile uint8_t blinkerReqA             = 0;   // 0=NONE 1=LEFT 2=RIGHT (current requested state)
-static volatile uint8_t manualReq               = 0;   // 0=AUTO 1=LEFT 2=RIGHT (dashboard manual override)
-static volatile uint8_t activeTurn              = STALK_IDLE; // Turn value currently transmitted on 0x249
-static volatile uint8_t lastReqDir              = 0;   // Last behavior-derived direction (edge detection)
-static volatile uint8_t oneShotTurn             = STALK_IDLE; // turn value transmitted during the pulse
-static volatile uint32_t oneShotUntil           = 0;   // millis() when the pulse ends
-// ── Auto-blinker delay: arm a delayed trigger after behavior detection ──
-static volatile uint32_t blinkADelayMs          = BLINKA_AUTO_DELAY_DEFAULT_MS; // configurable delay
-static volatile uint8_t  autoPendingDir         = 0;   // Delayed trigger direction waiting to fire (0=none)
-static volatile uint32_t autoFireAt             = 0;   // millis() timestamp for the delayed trigger
-static volatile bool     autoArmed             = false; // a delayed trigger is armed
-static volatile uint32_t blkATxOk               = 0;
-static volatile uint32_t blkATxFail             = 0;
+#define LEFTSTALK_ID      0x249
+#define VISUAL_DEBUG_ID   0x24A
+#define DRIVER_ASSIST_ID  0x3F8
+#define TLSSC_RESTORE_ID  0x331
+
+#define STALK_IDLE    0
+#define STALK_UP_1    2
+#define STALK_DOWN_1  7
+
+#define BLINKA_TX_PERIOD_MS         20
+#define BLINKA_PULSE_MS             350
+#define BLINKA_AUTO_DELAY_DEFAULT_MS 3000
+
+static portMUX_TYPE blinkAMux = portMUX_INITIALIZER_UNLOCKED;
+
+// Real SCCM diagnostics and rolling-counter alignment.
+static volatile uint32_t rx249 = 0;
+static volatile uint8_t realCounter = 0;
+static volatile uint8_t realTurn = 0;
+static volatile uint8_t realCksum = 0;
+static volatile bool cksumSelfTest = true;
+static volatile bool seen249 = false;
+static volatile uint8_t blinkACounter = 0;
+
+// Auto blinker state.
+static volatile bool blinkAEnabled = true;
+static volatile uint8_t activeTurn = STALK_IDLE;
+static volatile uint8_t lastReqDir = 0;
+static volatile uint8_t autoPendingDir = 0;
+static volatile uint32_t blinkADelayMs = BLINKA_AUTO_DELAY_DEFAULT_MS;
+static volatile uint32_t autoFireAt = 0;
+static volatile bool autoArmed = false;
+static volatile uint32_t blkATxOk = 0;
+static volatile uint32_t blkATxFail = 0;
+
+// CAN B telemetry used by the auto blinker.
+static volatile uint8_t visualBehaviorType = 0;
+static volatile uint32_t visualDebugRxCount = 0;
+static volatile uint32_t visualDebugLastMs = 0;
+
+// ULC configuration injection.
+static volatile uint8_t ulcInjectBlindSpotConfig = 0;
+static volatile uint8_t ulcInjectSpeedConfig = 0;
+static volatile uint8_t uiUlcBlindSpotConfig = 0;
+static volatile uint8_t uiUlcSpeedConfig = 0;
+static volatile uint32_t ulcInjectRxCount = 0;
+static volatile uint32_t ulcInjectTxCount = 0;
+static volatile uint32_t ulcInjectTxFail = 0;
+
+// TLSSC Restore is disabled by default.
+static volatile bool tlsscRestoreEnabled = false;
+
+static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len) {
+  uint32_t val = 0;
+  for (int i = 0; i < len; i++) {
+    int totalBit = startBit + i;
+    int byteIdx = totalBit / 8;
+    int bitIdx = totalBit % 8;
+    if ((data[byteIdx] >> bitIdx) & 0x01) val |= (1UL << i);
+  }
+  return val;
+}
+
+static inline void writeBitsLE(uint8_t *data, int startBit, int len, uint32_t value) {
+  for (int i = 0; i < len; i++) {
+    int totalBit = startBit + i;
+    int byteIdx = totalBit / 8;
+    int bitIdx = totalBit % 8;
+    uint8_t mask = (uint8_t)(1U << bitIdx);
+    if (value & (1UL << i)) data[byteIdx] |= mask;
+    else data[byteIdx] &= (uint8_t)~mask;
+  }
+}
+
+// SCCM_leftStalk checksum model from the existing Advanced EAP implementation.
+static const uint8_t CKSUM_CTR[16] = {
+  0x9B, 0xE8, 0x2A, 0xD3, 0xD3, 0x83, 0x4C, 0x5E,
+  0x3F, 0x5E, 0xE2, 0x28, 0x3A, 0x13, 0xAF, 0xCE
+};
+
+static inline uint8_t turnLinear(uint8_t turn) {
+  uint8_t r = 0;
+  if (turn & 0x01) r ^= 0x0E;
+  if (turn & 0x02) r ^= 0x1C;
+  if (turn & 0x04) r ^= 0x38;
+  if (turn & 0x08) r ^= 0x70;
+  return r;
+}
+
+static inline uint8_t leftStalkChecksum(uint8_t counter, uint8_t turn) {
+  return CKSUM_CTR[counter & 0x0F] ^ turnLinear(turn & 0x0F);
+}
+
+static inline uint8_t dirToTurn(uint8_t dir) {
+  if (dir == 1) return STALK_DOWN_1;
+  if (dir == 2) return STALK_UP_1;
+  return STALK_IDLE;
+}
+
+// Read the real 0x249 frame on CAN B and align the injected counter.
+static void handle249OnCanB(const uint8_t *data, uint8_t dlc) {
+  if (dlc < 3) return;
+
+  uint8_t cnt = data[1] & 0x0F;
+  uint8_t turn = data[2] & 0x0F;
+  uint8_t ck = data[0];
+  uint8_t predicted = leftStalkChecksum(cnt, turn);
+
+  portENTER_CRITICAL(&blinkAMux);
+  rx249++;
+  realCounter = cnt;
+  realTurn = turn;
+  realCksum = ck;
+  cksumSelfTest = (predicted == ck);
+  seen249 = true;
+  if (activeTurn == STALK_IDLE) blinkACounter = cnt;
+  portEXIT_CRITICAL(&blinkAMux);
+}
+
+// Send SCCM_turnIndicatorStalkStatus on CAN B.
+static void sendStalkFrameCanB(uint8_t turn) {
+  uint8_t cnt;
+  portENTER_CRITICAL(&blinkAMux);
+  cnt = (blinkACounter + 1) & 0x0F;
+  blinkACounter = cnt;
+  portEXIT_CRITICAL(&blinkAMux);
+
+  twai_message_t out = {};
+  out.identifier = LEFTSTALK_ID;
+  out.data_length_code = 4;
+  out.flags = 0;
+  out.data[0] = leftStalkChecksum(cnt, turn & 0x0F);
+  out.data[1] = cnt & 0x0F;
+  out.data[2] = turn & 0x0F;
+  out.data[3] = 0;
+
+  esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
+  portENTER_CRITICAL(&blinkAMux);
+  if (err == ESP_OK) blkATxOk++;
+  else blkATxFail++;
+  portEXIT_CRITICAL(&blinkAMux);
+}
+
+// Arm a delayed trigger when behaviorType becomes LEFT/RIGHT.
+static void evaluateAutoBlinker() {
+  bool en, ap, fmode;
+  portENTER_CRITICAL(&blinkAMux);
+  en = blinkAEnabled;
+  portEXIT_CRITICAL(&blinkAMux);
+
+  portENTER_CRITICAL(&stateMux);
+  ap = gateAPActive;
+  fmode = forceMode;
+  portEXIT_CRITICAL(&stateMux);
+
+  uint8_t behavior = visualBehaviorType;
+  uint8_t reqDir = 0;
+
+  if (en && (ap || fmode)) {
+    if (behavior == 2) reqDir = 1;
+    else if (behavior == 3) reqDir = 2;
+  }
+
+  portENTER_CRITICAL(&blinkAMux);
+
+  if (reqDir != 0 && reqDir != lastReqDir && !autoArmed) {
+    autoPendingDir = reqDir;
+    autoFireAt = millis() + blinkADelayMs;
+    autoArmed = true;
+  }
+
+  if (reqDir == 0) {
+    autoArmed = false;
+    autoPendingDir = 0;
+    autoFireAt = 0;
+  }
+
+  lastReqDir = reqDir;
+  portEXIT_CRITICAL(&blinkAMux);
+}
+
+// Generate the one-shot 350 ms CAN B pulse.
+static void blinkATxTick() {
+  static uint32_t lastTxMs = 0;
+  uint32_t now = millis();
+  uint8_t turn = STALK_IDLE;
+
+  portENTER_CRITICAL(&blinkAMux);
+
+  if (autoArmed && (int32_t)(now - autoFireAt) >= 0) {
+    uint8_t dir = autoPendingDir;
+    autoPendingDir = 0;
+    autoArmed = false;
+    activeTurn = dirToTurn(dir);
+    if (activeTurn != STALK_IDLE) {
+      // Reuse oneShot timing through activeTurn and a local deadline.
+      // The deadline is stored in autoFireAt.
+      autoFireAt = now + BLINKA_PULSE_MS;
+    }
+  }
+
+  if (activeTurn != STALK_IDLE && (int32_t)(autoFireAt - now) > 0) {
+    turn = activeTurn;
+  } else {
+    activeTurn = STALK_IDLE;
+    autoFireAt = 0;
+  }
+
+  portEXIT_CRITICAL(&blinkAMux);
+
+  if (turn == STALK_IDLE) return;
+  if (now - lastTxMs < BLINKA_TX_PERIOD_MS) return;
+  lastTxMs = now;
+  sendStalkFrameCanB(turn);
+}
+
+// Inject the selected ULC values into incoming 0x3F8 frames.
+static void injectUlcConfig(const twai_message_t &src) {
+  bool gate, fmode;
+  uint8_t blind, speed;
+
+  portENTER_CRITICAL(&stateMux);
+  gate = injectionGateOpen();
+  fmode = forceMode;
+  blind = ulcInjectBlindSpotConfig;
+  speed = ulcInjectSpeedConfig;
+  portEXIT_CRITICAL(&stateMux);
+
+  if (!gate && !fmode) return;
+
+  twai_message_t out = src;
+  writeBitsLE(out.data, 50, 2, speed & 0x03);
+  writeBitsLE(out.data, 52, 2, blind & 0x03);
+
+  ulcInjectRxCount++;
+  esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
+  if (err == ESP_OK) ulcInjectTxCount++;
+  else ulcInjectTxFail++;
+}
+
+// TLSSC Restore: force the low 6 bits of byte 0 on 0x331 to 0x1B.
+static void injectTlsscRestore(const twai_message_t &src) {
+  bool en, gate, fmode;
+  portENTER_CRITICAL(&stateMux);
+  en = tlsscRestoreEnabled;
+  gate = injectionGateOpen();
+  fmode = forceMode;
+  portEXIT_CRITICAL(&stateMux);
+
+  if ((!en || !gate) && !fmode) return;
+
+  twai_message_t out = src;
+  out.data[0] = (uint8_t)((out.data[0] & 0xC0) | 0x1B);
+
+  esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
+  if (err == ESP_OK) sumTxOk++;
+  else sumTxFail++;
+}
+
 
 static inline bool isDASActive(uint8_t status) {
   bool fm = forceMode;
@@ -331,131 +877,6 @@ static void handle390(const uint8_t *data) {
     portEXIT_CRITICAL(&stateMux);
 }
 
-// Convert a direction (1=LEFT, 2=RIGHT) to the SCCM turn value.
-// Always use soft UP_1/DOWN_1: this is the native lane-change three-blink behavior.
-// This produces the native three-blink behavior from one pulse.
-static inline uint8_t dirToTurn(uint8_t dir) {
-  if (dir == 1) return STALK_DOWN_1; // left
-  if (dir == 2) return STALK_UP_1;   // right
-  return STALK_IDLE;
-}
-
-// Process 0x249 received on CAN A (the real SCCM). Align our counter with it
-// when we are not injecting, and verify our checksum formula (self-test).
-// Based on turn_indicator.ino (handle249) to avoid a counter discontinuity.
-static void handle249OnCanA(const uint8_t *data, uint8_t dlc) {
-  if (dlc < 3) return;
-  uint8_t cnt  = data[1] & 0x0F;
-  uint8_t turn = data[2] & 0x0F;
-  uint8_t ck   = data[0];
-  uint8_t pred = leftStalkChecksum(cnt, turn);
-
-  portENTER_CRITICAL(&blinkAMux);
-  rx249++;
-  realCounter   = cnt;
-  realTurn      = turn;
-  realCksum     = ck;
-  cksumSelfTest = (pred == ck);
-  seen249       = true;
-  // While not injecting, follow the SCCM counter so we resume
-  // the sequence cleanly when transmission starts.
-  if (activeTurn == STALK_IDLE) blinkACounter = cnt;
-  portEXIT_CRITICAL(&blinkAMux);
-}
-
-// Send one SCCM_leftStalk (585 / 0x249) frame on CAN A with the given turn value.
-// Increment the counter before use, matching turn_indicator.ino.
-static void sendStalkFrame(uint8_t turn) {
-  uint8_t cnt;
-  portENTER_CRITICAL(&blinkAMux);
-  cnt = (blinkACounter + 1) & 0x0F;
-  blinkACounter = cnt;
-  portEXIT_CRITICAL(&blinkAMux);
-  turn &= 0x0F;
-
-  struct can_frame out;
-  out.can_id  = 0x249;   // SCCM_leftStalk (585)
-  out.can_dlc = 4;       // Real frame length = 4 bytes
-  out.data[0] = leftStalkChecksum(cnt, turn); // SCCM_leftStalkChecksum (retro-engine)
-  out.data[1] = cnt & 0x0F;                   // counter only, high nibble 0
-  out.data[2] = turn & 0x0F;                  // turn only, reserved nibble 0
-  out.data[3] = 0;
-  out.data[4] = out.data[5] = out.data[6] = out.data[7] = 0;
-
-  MCP2515::ERROR err = Can_A.sendMessage(&out);
-  portENTER_CRITICAL(&blinkAMux);
-  if (err == MCP2515::ERROR_OK) { blkATxOk++; mcpTxOk++; mcpTxFailConsecutive = 0; }
-  else                          { blkATxFail++; mcpTxFail++; if (mcpTxFailConsecutive < 255) mcpTxFailConsecutive++; }
-  portEXIT_CRITICAL(&blinkAMux);
-}
-
-// Evaluate the auto-blinker condition and arm a delayed trigger.
-// The direction source is DAS_behaviorType on CAN B.
-static void evaluateAutoBlinkerA() {
-  bool en, ap, fmode;
-  uint8_t behavior;
-
-  portENTER_CRITICAL(&blinkAMux);
-  en = blinkAEnabled;
-  portEXIT_CRITICAL(&blinkAMux);
-
-  portENTER_CRITICAL(&stateMux);
-  ap = gateAPActive;
-  fmode = forceMode;
-  portEXIT_CRITICAL(&stateMux);
-
-  behavior = visualBehaviorType;
-
-  uint8_t reqDir = 0;
-  if (en && (ap || fmode)) {
-    if (behavior == 2) reqDir = 1;
-    else if (behavior == 3) reqDir = 2;
-  }
-
-  portENTER_CRITICAL(&blinkAMux);
-
-  if (reqDir != 0 && reqDir != lastReqDir && !autoArmed) {
-    autoPendingDir = reqDir;
-    autoFireAt = millis() + blinkADelayMs;
-    autoArmed = true;
-  }
-
-  if (reqDir == 0) {
-    autoArmed = false;
-    autoPendingDir = 0;
-    autoFireAt = 0;
-  }
-
-  lastReqDir = reqDir;
-  portEXIT_CRITICAL(&blinkAMux);
-}
-
-static void blinkATxTick() {
-  static uint32_t lastMs = 0;
-  uint32_t now = millis();
-  uint8_t turn = STALK_IDLE;
-  portENTER_CRITICAL(&blinkAMux);
-  // 1) Delayed auto trigger reached its deadline -> start the one-shot pulse.
-  if (autoArmed && (int32_t)(now - autoFireAt) >= 0) {
-    oneShotTurn  = dirToTurn(autoPendingDir);
-    oneShotUntil = now + BLINKA_PULSE_MS;
-    autoArmed      = false;
-    autoPendingDir = 0;
-  }
-  // 2) Is a one-shot pulse currently active?
-  if ((int32_t)(oneShotUntil - now) > 0) {
-    turn = oneShotTurn;          // pulse in progress
-  } else {
-    oneShotTurn = STALK_IDLE;    // pulse window expired -> idle
-  }
-  activeTurn = turn;             // for dashboard display
-  portEXIT_CRITICAL(&blinkAMux);
-  if (turn == STALK_IDLE) return;
-  if (now - lastMs < BLINKA_TX_PERIOD_MS) return;
-  lastMs = now;
-  sendStalkFrame(turn);
-}
-
 static void handle921(const uint8_t *data) {
     sumRx921++;
     bool ap = isDASActive(readDASStatus(data));
@@ -464,35 +885,14 @@ static void handle921(const uint8_t *data) {
     portEXIT_CRITICAL(&stateMux);
 }
 
-static void injectUlcConfig(const twai_message_t &src) {
-  bool gate, fmode;
-  uint8_t blind, speed;
-
-  portENTER_CRITICAL(&stateMux);
-  gate = injectionGateOpen();
-  fmode = forceMode;
-  blind = ulcInjectBlindSpotConfig;
-  speed = ulcInjectSpeedConfig;
-  portEXIT_CRITICAL(&stateMux);
-
-  if (!gate && !fmode) return;
-
-  twai_message_t out = src;
-  writeBitsLE(out.data, 50, 2, speed & 0x03);
-  writeBitsLE(out.data, 52, 2, blind & 0x03);
-
-  ulcInjectRxCount++;
-  esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
-  if (err == ESP_OK) ulcInjectTxCount++;
-  else               ulcInjectTxFail++;
-}
-
 static void handle1016(const uint8_t *data, uint8_t dlc) {
     if (dlc < 4) return;
     sumRx1016++;
     uint8_t spr = (data[3] >> 4) & 0x0F;
     if (dlc >= 7) {
-        // UI_ulcBlindSpotConfig: 0x3F8, bits 52-53, little-endian.
+        // UI_ulcSpeedConfig: bits 50-51.
+        // UI_ulcBlindSpotConfig: bits 52-53.
+        uiUlcSpeedConfig = (data[6] >> 2) & 0x03;
         uiUlcBlindSpotConfig = (data[6] >> 4) & 0x03;
     }
     portENTER_CRITICAL(&stateMux);
@@ -554,41 +954,15 @@ static void injectTLSSC(const twai_message_t &src) {
     else               sumTxFail++;
 }
 
-// TLSSC Restore: 0x331 DAS_autopilotConfig, force both 3-bit fields to SELF_DRIVING (3).
-static void injectTlsscRestore(const twai_message_t &src) {
-    bool en, gate, fmode;
-    portENTER_CRITICAL(&stateMux);
-    en    = tlsscRestoreEnabled;
-    gate  = injectionGateOpen();
-    fmode = forceMode;
-    portEXIT_CRITICAL(&stateMux);
-
-    if ((!en || !gate) && !fmode)
-        return;
-
-    twai_message_t out;
-    out.identifier       = src.identifier;
-    out.data_length_code = src.data_length_code;
-    out.flags            = 0;
-    for (int i = 0; i < 8; i++) out.data[i] = src.data[i];
-
-    // Preserve the top 2 bits of byte 0 and force the low 6 bits to 0x1B.
-    out.data[0] = (uint8_t)((out.data[0] & 0xC0) | 0x1B);
-
-    esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
-    if (err == ESP_OK) sumTxOk++;
-    else               sumTxFail++;
-}
-
 static void summonCfgLoad() {
     prefs.begin("summon", true);
-    summonEnabled  = prefs.getBool("en", true);
-    tlsscEnabled   = prefs.getBool("tlssc", false);
+    summonEnabled = prefs.getBool("en", true);
+    tlsscEnabled  = prefs.getBool("tlssc", false);
     tlsscRestoreEnabled = prefs.getBool("tlrst", false);
     ulcInjectBlindSpotConfig = prefs.getUChar("ulcbs", 0);
     ulcInjectSpeedConfig = prefs.getUChar("ulcsp", 0);
-    blinkAEnabled  = prefs.getBool("blkA", true);
-    blinkADelayMs  = prefs.getUInt("blkADly", BLINKA_AUTO_DELAY_DEFAULT_MS);
+    blinkAEnabled = prefs.getBool("blkA", true);
+    blinkADelayMs = prefs.getUInt("blkADly", BLINKA_AUTO_DELAY_DEFAULT_MS);
     prefs.end();
 }
 
@@ -622,6 +996,66 @@ static char              otaErrMsg[64] = "";
 extern const char INDEX_HTML[] PROGMEM;
 static WebServer server(80);
 
+static String nagCfgToJson() {
+  NagConfig c;
+  portENTER_CRITICAL(&nagCfgMux);
+  c = nagCfg;
+  portEXIT_CRITICAL(&nagCfgMux);
+  String s;
+  s.reserve(512);
+  s = "{";
+  s += "\"enabled\":";    s += (c.enabled ? "true" : "false");
+  s += ",\"mode\":";      s += String(c.mode);
+  s += ",\"targetId\":";  s += String(c.targetId);
+  s += ",\"hoRatePct\":"; s += String(c.hoRatePct);
+  s += ",\"burstMs\":";   s += String(c.burstMs);
+  s += ",\"pauseMs\":";   s += String(c.pauseMs);
+  s += ",\"apStateId\":"; s += String(c.apStateId);
+  s += ",\"steeringId\":";s += String(c.steeringId);
+s += ",\"torque\":[";
+for (uint8_t i = 0; i < c.torqueCount; i++) {
+  if (i) s += ",";
+  s += "{\"b2\":";
+  s += String(c.torqueB2[i]);
+  s += ",\"b3\":";
+  s += String(c.torqueB3[i]);
+  uint16_t raw = ((c.torqueB2[i] & 0x0F) << 8) | c.torqueB3[i];
+  float nm = raw * 0.01f - 20.5f;
+  s += ",\"nm\":";
+  s += String(nm, 2);
+  s += "}";
+}
+s += "]}";
+return s;
+}
+
+static String nagStatsToJson() {
+  NagContext c;
+  portENTER_CRITICAL(&nagCtxMux); c = nagCtx; portEXIT_CRITICAL(&nagCtxMux);
+  String s;
+  s.reserve(512);
+  s = "{";
+  s += "\"rx\":";            s += String(nagRxFrames);
+  s += ",\"echo\":";         s += String(nagEchoCount);
+  s += ",\"txOk\":";         s += String(mcpTxOk);
+  s += ",\"txFail\":";       s += String(mcpTxFail);
+  s += ",\"latUs\":";        s += String(nagEchoLatUs);
+  s += ",\"ho\":";           s += String(nagRealHo);
+  s += ",\"torque\":";       s += String(nagRealTorque, 2);
+  s += ",\"injHo\":";        s += String(nagLastInjectedHo);
+  s += ",\"injNm\":";        s += String(nagLastInjectedNm, 2);
+  s += ",\"uptimeS\":";      s += String((millis() - bootTime) / 1000);
+  s += ",\"apState\":";      s += String(c.apState);
+  s += ",\"handsOnState\":"; s += String(c.handsOnState);
+  s += ",\"steeringDeg\":";  s += String(c.steeringAngleDeg, 1);
+  unsigned long now = millis();
+  s += ",\"apStaleMs\":";    s += String((c.lastApStateMs == 0) ? 999999 : (now - c.lastApStateMs));
+  s += ",\"stStaleMs\":";    s += String((c.lastSteeringMs == 0) ? 999999 : (now - c.lastSteeringMs));
+  s += ",\"canAState\":";    s += String((int)mcpState);
+  s += "}";
+  return s;
+}
+
 static String summonStatsToJson() {
     bool en, tlssc, tlrst, ap, parked, summon, aca, spr, fmode;
     uint32_t rmx, tok, tfail, r280, r390, r921, r1016;
@@ -649,6 +1083,11 @@ static String summonStatsToJson() {
     s += "\"enabled\":"  + String(en     ? "true" : "false");
     s += ",\"tlssc\":"   + String(tlssc  ? "true" : "false");
     s += ",\"tlrst\":"   + String(tlrst  ? "true" : "false");
+    s += ",\"ulcBlind\":" + String((int)ulcInjectBlindSpotConfig);
+    s += ",\"ulcSpeed\":" + String((int)ulcInjectSpeedConfig);
+    s += ",\"ulcRx\":" + String((unsigned long)ulcInjectRxCount);
+    s += ",\"ulcTx\":" + String((unsigned long)ulcInjectTxCount);
+    s += ",\"ulcTxFail\":" + String((unsigned long)ulcInjectTxFail);
     s += ",\"gate\":"    + String(gate   ? "true" : "false");
     s += ",\"ap\":"      + String(ap     ? "true" : "false");
     s += ",\"parked\":"  + String(parked ? "true" : "false");
@@ -659,11 +1098,6 @@ static String summonStatsToJson() {
     s += ",\"rxMux1\":"  + String(rmx);
     s += ",\"txOk\":"    + String(tok);
     s += ",\"txFail\":"  + String(tfail);
-    s += ",\"ulcBlind\":" + String((int)ulcInjectBlindSpotConfig);
-    s += ",\"ulcSpeed\":" + String((int)ulcInjectSpeedConfig);
-    s += ",\"ulcRx\":" + String((unsigned long)ulcInjectRxCount);
-    s += ",\"ulcTx\":" + String((unsigned long)ulcInjectTxCount);
-    s += ",\"ulcTxFail\":" + String((unsigned long)ulcInjectTxFail);
     s += ",\"rx280\":"   + String(r280);
     s += ",\"rx390\":"   + String(r390);
     s += ",\"rx921\":"   + String(r921);
@@ -674,58 +1108,55 @@ static String summonStatsToJson() {
     return s;
 }
 
+
 static String blinkAStatsToJson() {
   bool en, ap, fmode;
-  uint8_t req, man, curTurn;
-  uint32_t tok, tfail;
-  uint32_t now = millis();
-  uint32_t dly, remain;
-  uint8_t  pend;
-  bool     armed;
+  uint8_t curTurn, pending;
+  uint32_t delayMs, remain, txOk, txFail, r249;
+  bool armed, seen, selfTest;
+  uint8_t rCnt, rTurn, rCk;
   portENTER_CRITICAL(&blinkAMux);
-  en      = blinkAEnabled;
-  req     = blinkerReqA;
-  man     = manualReq;
+  en = blinkAEnabled;
   curTurn = activeTurn;
-  tok     = blkATxOk;
-  tfail   = blkATxFail;
-  dly     = blinkADelayMs;
-  armed   = autoArmed;
-  pend    = autoPendingDir;
-  remain  = (autoArmed && (int32_t)(autoFireAt - now) > 0) ? (autoFireAt - now) : 0;
+  pending = autoPendingDir;
+  delayMs = blinkADelayMs;
+  armed = autoArmed;
+  uint32_t now = millis();
+  remain = (autoArmed && (int32_t)(autoFireAt - now) > 0) ? (autoFireAt - now) : 0;
+  txOk = blkATxOk;
+  txFail = blkATxFail;
+  r249 = rx249;
+  rCnt = realCounter;
+  rTurn = realTurn;
+  rCk = realCksum;
+  seen = seen249;
+  selfTest = cksumSelfTest;
   portEXIT_CRITICAL(&blinkAMux);
   portENTER_CRITICAL(&stateMux);
-  ap    = gateAPActive;
+  ap = gateAPActive;
   fmode = forceMode;
   portEXIT_CRITICAL(&stateMux);
-  uint32_t r249;
-  uint8_t  rCnt, rTurn, rCk;
-  bool     stOk, seen;
-  portENTER_CRITICAL(&blinkAMux);
-  r249  = rx249;   rCnt = realCounter; rTurn = realTurn; rCk = realCksum;
-  stOk  = cksumSelfTest; seen = seen249;
-  portEXIT_CRITICAL(&blinkAMux);
+
   String s = "{";
-  s += "\"enabled\":"      + String(en ? "true" : "false");
-  s += ",\"apActive\":"     + String(ap ? "true" : "false");
-  s += ",\"forceMode\":"    + String(fmode ? "true" : "false");
-  s += ",\"request\":"      + String(req);
-  s += ",\"manual\":"       + String(man);
-  s += ",\"activeTurn\":"   + String(curTurn);
-  s += ",\"delayMs\":"      + String(dly);
-  s += ",\"autoArmed\":"    + String(armed ? "true" : "false");
-  s += ",\"autoPending\":"  + String(pend);
+  s += "\"enabled\":" + String(en ? "true" : "false");
+  s += ",\"apActive\":" + String(ap ? "true" : "false");
+  s += ",\"forceMode\":" + String(fmode ? "true" : "false");
+  s += ",\"behaviorType\":" + String((int)visualBehaviorType);
+  s += ",\"activeTurn\":" + String(curTurn);
+  s += ",\"delayMs\":" + String(delayMs);
+  s += ",\"autoArmed\":" + String(armed ? "true" : "false");
+  s += ",\"autoPending\":" + String(pending);
   s += ",\"autoRemainMs\":" + String(remain);
-  s += ",\"txOk\":"         + String(tok);
-  s += ",\"txFail\":"       + String(tfail);
-  s += ",\"rx249\":"        + String(r249);
-  s += ",\"seen249\":"      + String(seen ? "true" : "false");
-  s += ",\"realCounter\":"  + String(rCnt);
-  s += ",\"realTurn\":"     + String(rTurn);
-  s += ",\"realCksum\":"    + String(rCk);
-  s += ",\"cksumSelfTest\":"+ String(stOk ? "true" : "false");
-  s += ",\"canAState\":"    + String((int)mcpState);
-  s += ",\"uptimeS\":"      + String((millis() - bootTime) / 1000);
+  s += ",\"txOk\":" + String(txOk);
+  s += ",\"txFail\":" + String(txFail);
+  s += ",\"rx249\":" + String(r249);
+  s += ",\"seen249\":" + String(seen ? "true" : "false");
+  s += ",\"realCounter\":" + String(rCnt);
+  s += ",\"realTurn\":" + String(rTurn);
+  s += ",\"realCksum\":" + String(rCk);
+  s += ",\"cksumSelfTest\":" + String(selfTest ? "true" : "false");
+  s += ",\"canBState\":" + String((int)twaiReady);
+  s += ",\"uptimeS\":" + String((millis() - bootTime) / 1000);
   s += "}";
   return s;
 }
@@ -735,6 +1166,7 @@ static String dasTelemetryStatsToJson() {
   String s = "{";
   s += "\"behaviorType\":" + String((int)visualBehaviorType);
   s += ",\"ulcBlindSpotConfig\":" + String((int)uiUlcBlindSpotConfig);
+  s += ",\"ulcSpeedConfig\":" + String((int)uiUlcSpeedConfig);
   s += ",\"visualDebugRx\":" + String((unsigned long)visualDebugRxCount);
   s += ",\"visualDebugStaleMs\":" + String(visualDebugLastMs == 0 ? 999999UL : (now - visualDebugLastMs));
   s += "}";
@@ -817,9 +1249,93 @@ static void httpOtaFinish() {
 }
 
 static void httpSystemStats() { server.send(200, "application/json", systemStatsToJson()); }
-static void httpDasTelemetryStats() { server.send(200, "application/json", dasTelemetryStatsToJson()); }
 
 static void httpRoot()   { server.send_P(200, "text/html", INDEX_HTML); }
+static void httpNagConfig() { server.send(200, "application/json", nagCfgToJson()); }
+static void httpNagStats()  { server.send(200, "application/json", nagStatsToJson()); }
+
+static void httpNagSetMode() {
+  int m = server.arg("m").toInt();
+  NagConfig nc;
+  if      (m == 1) nagCfgDefaultsModeB(nc);
+  else             nagCfgDefaultsModeA(nc);
+  portENTER_CRITICAL(&nagCfgMux); nagCfg = nc; portEXIT_CRITICAL(&nagCfgMux);
+  nagCfgSave();
+  server.send(200, "application/json", nagCfgToJson());
+}
+
+static void httpNagUpdate() {
+  NagConfig nc;
+  portENTER_CRITICAL(&nagCfgMux); nc = nagCfg; portEXIT_CRITICAL(&nagCfgMux);
+  if (server.hasArg("enabled"))
+    nc.enabled = (server.arg("enabled") == "1");
+  if (server.hasArg("targetId")) {
+    char* endptr;
+    long val = strtol(server.arg("targetId").c_str(), &endptr, 0);
+    if (*endptr == '\0' && val > 0 && val <= 0x7FF)
+      nc.targetId = (uint16_t)val;
+  }
+  if (server.hasArg("hoRatePct")) {
+    int val = server.arg("hoRatePct").toInt();
+    if (val >= 0 && val <= 100) nc.hoRatePct = (uint8_t)val;
+  }
+  if (server.hasArg("burstMs")) {
+    int val = server.arg("burstMs").toInt();
+    if (val >= 50 && val <= 10000) nc.burstMs = (uint16_t)val;
+  }
+  if (server.hasArg("pauseMs")) {
+    int val = server.arg("pauseMs").toInt();
+    if (val >= 0 && val <= 10000) nc.pauseMs = (uint16_t)val;
+  }
+  if (server.hasArg("apStateId")) {
+    char* endptr;
+    long val = strtol(server.arg("apStateId").c_str(), &endptr, 0);
+    if (*endptr == '\0' && val > 0 && val <= 0x7FF)
+      nc.apStateId = (uint16_t)val;
+  }
+  if (server.hasArg("steeringId")) {
+    char* endptr;
+    long val = strtol(server.arg("steeringId").c_str(), &endptr, 0);
+    if (*endptr == '\0' && val > 0 && val <= 0x7FF)
+      nc.steeringId = (uint16_t)val;
+  }
+  if (server.hasArg("count")) {
+    uint8_t n = (uint8_t)server.arg("count").toInt();
+    if (n > NAG_MAX_TORQUE_ENTRIES) n = NAG_MAX_TORQUE_ENTRIES;
+    if (n < 1) n = 1;
+    for (uint8_t i = 0; i < n; i++) {
+      String k2 = "b2_" + String(i);
+      String k3 = "b3_" + String(i);
+      if (server.hasArg(k2)) {
+        char* endptr;
+        long val = strtol(server.arg(k2).c_str(), &endptr, 0);
+        if (*endptr == '\0' && val >= 0 && val <= 255)
+          nc.torqueB2[i] = (uint8_t)val;
+      }
+      if (server.hasArg(k3)) {
+        char* endptr;
+        long val = strtol(server.arg(k3).c_str(), &endptr, 0);
+        if (*endptr == '\0' && val >= 0 && val <= 255)
+          nc.torqueB3[i] = (uint8_t)val;
+      }
+    }
+    nc.torqueCount = n;
+  }
+  nagCfgClampAll(nc);
+  portENTER_CRITICAL(&nagCfgMux); nagCfg = nc; portEXIT_CRITICAL(&nagCfgMux);
+  nagCfgSave();
+  server.send(200, "application/json", nagCfgToJson());
+}
+
+static void httpNagReset() {
+  NagConfig nc;
+  nagCfgDefaultsModeA(nc);
+  portENTER_CRITICAL(&nagCfgMux); nagCfg = nc; portEXIT_CRITICAL(&nagCfgMux);
+  nagCfgSave();
+  nagRxFrames = nagEchoCount = mcpTxOk = mcpTxFail = 0;
+  server.send(200, "application/json", nagCfgToJson());
+}
+
 static void httpSummonStats()  { server.send(200, "application/json", summonStatsToJson()); }
 static void httpSummonEnable() {
     portENTER_CRITICAL(&stateMux); summonEnabled = true;  portEXIT_CRITICAL(&stateMux);
@@ -841,90 +1357,85 @@ static void httpSummonTlsscDisable() {
     summonCfgSave();
     server.send(200, "application/json", summonStatsToJson());
 }
-static void httpSummonTlrstEnable() {
-    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = true; portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
-static void httpSummonTlrstDisable() {
-    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = false; portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
-
-static void httpUlcConfigUpdate() {
-    int blind = server.hasArg("blind") ? server.arg("blind").toInt() : ulcInjectBlindSpotConfig;
-    int speed = server.hasArg("speed") ? server.arg("speed").toInt() : ulcInjectSpeedConfig;
-
-    if (blind < 0 || blind > 2 || speed < 0 || speed > 2) {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid value\"}");
-        return;
-    }
-
-    portENTER_CRITICAL(&stateMux);
-    ulcInjectBlindSpotConfig = (uint8_t)blind;
-    ulcInjectSpeedConfig = (uint8_t)speed;
-    portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
 
 static void httpSummonForceMode() {
     portENTER_CRITICAL(&stateMux);
     forceMode = !forceMode;
     portEXIT_CRITICAL(&stateMux);
-    evaluateAutoBlinkerA();
+    evaluateAutoBlinker();
     server.send(200, "application/json", summonStatsToJson());
 }
 
-static void httpBlinkAStats()  { server.send(200, "application/json", blinkAStatsToJson()); }
+
+static void httpDasTelemetryStats() {
+  server.send(200, "application/json", dasTelemetryStatsToJson());
+}
+
+static void httpBlinkAStats() {
+  server.send(200, "application/json", blinkAStatsToJson());
+}
+
 static void httpBlinkAEnable() {
-    portENTER_CRITICAL(&blinkAMux); blinkAEnabled = true;  portEXIT_CRITICAL(&blinkAMux);
-    evaluateAutoBlinkerA();
-    summonCfgSave();
-    server.send(200, "application/json", blinkAStatsToJson());
+  portENTER_CRITICAL(&blinkAMux);
+  blinkAEnabled = true;
+  portEXIT_CRITICAL(&blinkAMux);
+  evaluateAutoBlinker();
+  summonCfgSave();
+  server.send(200, "application/json", blinkAStatsToJson());
 }
+
 static void httpBlinkADisable() {
-    portENTER_CRITICAL(&blinkAMux); blinkAEnabled = false; portEXIT_CRITICAL(&blinkAMux);
-    evaluateAutoBlinkerA();
-    summonCfgSave();
-    server.send(200, "application/json", blinkAStatsToJson());
+  portENTER_CRITICAL(&blinkAMux);
+  blinkAEnabled = false;
+  autoArmed = false;
+  autoPendingDir = 0;
+  activeTurn = STALK_IDLE;
+  portEXIT_CRITICAL(&blinkAMux);
+  summonCfgSave();
+  server.send(200, "application/json", blinkAStatsToJson());
 }
-// Manual blinker trigger: ?dir=left|right|off
-// Each press arms one soft one-shot pulse independently of the auto-blinker.
-// "off" only cancels the active pulse and returns control to auto mode.
-static void httpBlinkAManual() {
-    uint8_t man = 0;
-    if (server.hasArg("dir")) {
-        String d = server.arg("dir");
-        if      (d == "left")  man = 1;
-        else if (d == "right") man = 2;
-        else                   man = 0; // off / stop
-    }
-    portENTER_CRITICAL(&blinkAMux);
-    manualReq = man;   // Dashboard display only; the pulse is handled below.
-    if (man != 0) {
-        oneShotTurn  = dirToTurn(man);       // 1=left->DOWN_1, 2=right->UP_1
-        oneShotUntil = millis() + BLINKA_PULSE_MS;
-        lastReqDir   = 0;  // ne bloque pas un futur front auto
-    } else {
-        oneShotTurn  = STALK_IDLE;
-        oneShotUntil = 0;                    // stop immediat
-    }
-    portEXIT_CRITICAL(&blinkAMux);
-    server.send(200, "application/json", blinkAStatsToJson());
-}
-// Set the auto-blinker delay in milliseconds (0..30000).
+
 static void httpBlinkADelay() {
-    if (server.hasArg("ms")) {
-        long v = server.arg("ms").toInt();
-        if (v < 0)     v = 0;
-        if (v > 30000) v = 30000;
-        portENTER_CRITICAL(&blinkAMux); blinkADelayMs = (uint32_t)v; portEXIT_CRITICAL(&blinkAMux);
-        summonCfgSave();
-    }
-    server.send(200, "application/json", blinkAStatsToJson());
+  int v = server.hasArg("ms") ? server.arg("ms").toInt() : (int)BLINKA_AUTO_DELAY_DEFAULT_MS;
+  v = constrain(v, 0, 30000);
+  portENTER_CRITICAL(&blinkAMux);
+  blinkADelayMs = (uint32_t)v;
+  portEXIT_CRITICAL(&blinkAMux);
+  summonCfgSave();
+  server.send(200, "application/json", blinkAStatsToJson());
 }
+
+static void httpSummonTlrstEnable() {
+  portENTER_CRITICAL(&stateMux);
+  tlsscRestoreEnabled = true;
+  portEXIT_CRITICAL(&stateMux);
+  summonCfgSave();
+  server.send(200, "application/json", summonStatsToJson());
+}
+
+static void httpSummonTlrstDisable() {
+  portENTER_CRITICAL(&stateMux);
+  tlsscRestoreEnabled = false;
+  portEXIT_CRITICAL(&stateMux);
+  summonCfgSave();
+  server.send(200, "application/json", summonStatsToJson());
+}
+
+static void httpUlcConfigUpdate() {
+  int blind = server.hasArg("blind") ? server.arg("blind").toInt() : ulcInjectBlindSpotConfig;
+  int speed = server.hasArg("speed") ? server.arg("speed").toInt() : ulcInjectSpeedConfig;
+  if (blind < 0 || blind > 2 || speed < 0 || speed > 2) {
+    server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid value\"}");
+    return;
+  }
+  portENTER_CRITICAL(&stateMux);
+  ulcInjectBlindSpotConfig = (uint8_t)blind;
+  ulcInjectSpeedConfig = (uint8_t)speed;
+  portEXIT_CRITICAL(&stateMux);
+  summonCfgSave();
+  server.send(200, "application/json", summonStatsToJson());
+}
+
 static void webTask(void *arg) {
   Serial.println("WiFi: Starting AP...");
   WiFi.disconnect(true);
@@ -943,22 +1454,26 @@ static void webTask(void *arg) {
   Serial.printf("AP: SSID=%s IP=%s\n", ssid, ip.toString().c_str());
 
   server.on("/",                  HTTP_GET,  httpRoot);
+  server.on("/api/nag/config",    HTTP_GET,  httpNagConfig);
+  server.on("/api/nag/stats",     HTTP_GET,  httpNagStats);
+  server.on("/api/nag/mode",      HTTP_POST, httpNagSetMode);
+  server.on("/api/nag/update",    HTTP_POST, httpNagUpdate);
+  server.on("/api/nag/reset",     HTTP_POST, httpNagReset);
   server.on("/api/summon/stats",  HTTP_GET,  httpSummonStats);
   server.on("/api/summon/enable", HTTP_POST, httpSummonEnable);
   server.on("/api/summon/disable",HTTP_POST, httpSummonDisable);
   server.on("/api/summon/tlssc-enable",  HTTP_POST, httpSummonTlsscEnable);
   server.on("/api/summon/tlssc-disable", HTTP_POST, httpSummonTlsscDisable);
+  server.on("/api/summon/forcemode", HTTP_POST, httpSummonForceMode);
   server.on("/api/summon/tlrst-enable", HTTP_POST, httpSummonTlrstEnable);
   server.on("/api/summon/tlrst-disable", HTTP_POST, httpSummonTlrstDisable);
   server.on("/api/summon/ulc-config", HTTP_POST, httpUlcConfigUpdate);
-  server.on("/api/summon/forcemode", HTTP_POST, httpSummonForceMode);
-  server.on("/api/blinkA/stats",   HTTP_GET,  httpBlinkAStats);
-  server.on("/api/blinkA/enable",  HTTP_POST, httpBlinkAEnable);
+  server.on("/api/blinkA/stats", HTTP_GET, httpBlinkAStats);
+  server.on("/api/blinkA/enable", HTTP_POST, httpBlinkAEnable);
   server.on("/api/blinkA/disable", HTTP_POST, httpBlinkADisable);
-  server.on("/api/blinkA/manual",  HTTP_POST, httpBlinkAManual);
-  server.on("/api/blinkA/delay",   HTTP_POST, httpBlinkADelay);
+  server.on("/api/blinkA/delay", HTTP_POST, httpBlinkADelay);
+  server.on("/api/das/stats", HTTP_GET, httpDasTelemetryStats);
   server.on("/api/system/stats",  HTTP_GET,  httpSystemStats);
-  server.on("/api/das/stats",     HTTP_GET,  httpDasTelemetryStats);
   server.on("/update", HTTP_POST, httpOtaFinish, httpOtaUpload);
   server.begin();
 
@@ -973,11 +1488,11 @@ static void webTask(void *arg) {
 // CAN TASKS
 // ═══════════════════════════════════════════════════════════════
 
-// Properly reinitialize the MCP2515 (reset + bitrate + normal mode).
-// Use the same MCP_CLOCK constant everywhere.
+// Reinitialize the MCP2515 cleanly (reset + bitrate + normal mode).
+// Always use the same MCP_CLOCK constant.
 static void mcpReinit() {
   Can_A.reset();
-  delay(10);                              // >=10 ms after reset (datasheet)
+  delay(10);                              // >=10 ms apres reset (datasheet)
   Can_A.setBitrate(CAN_500KBPS, MCP_CLOCK);
   Can_A.setNormalMode();
   mcpTxFailConsecutive = 0;
@@ -986,37 +1501,34 @@ static void mcpReinit() {
 static void canTaskMcp(void* arg) {
   Serial.println("[CAN A] MCP2515 task started");
   for (;;) {
-    // ── Bounded read ──
-    // Never drain more than MCP_RX_BUDGET frames before yielding the
-    // task. If an RX buffer gets stuck ( uncleared overflow -> same
-    // frame returned repeatedly), the task still exits the loop:
-    // no infinite loop and no watchdog freeze.
+    // ── BOUNDED READ LOOP ──
+    // Never drain more than MCP_RX_BUDGET frames without yielding the
+    // task. If an RX buffer gets stuck (uncleared overflow -> same
+    // frame repeated in a loop), the task still exits: no more
+    // infinite loop -> no freeze / watchdog.
     struct can_frame rxf;
     uint8_t budget = MCP_RX_BUDGET;
     while (budget-- && Can_A.readMessage(&rxf) == MCP2515::ERROR_OK) {
       mcpRxCount++;
-      eapProcessMcpFrame(rxf);
+      nagProcessMcpFrame(rxf);
     }
 
-    // ── 0x249 transmission only during injection (~50 Hz) ──
-    blinkATxTick();
-
-    // ── State verification / recovery (1 Hz) ──
+    // ── STATUS CHECK / RECOVERY (1 Hz) ──
     unsigned long now = millis();
     if (now - lastMcpStatusMs >= 1000) {
       lastMcpStatusMs = now;
 
-      // Read the real MCP2515 error flags (EFLG register).
+      // Read the REAL MCP2515 error flags (EFLG register).
       uint8_t eflg = Can_A.getErrorFlags();
 
-      // 1) RX overflow: it MUST be cleared or the controller stops
-      //    receiving in that buffer and reception appears frozen.
+      // 1) RX overflow: MUST be cleared, otherwise the controller stops
+      //    receiving in this buffer and the Nag Killer appears frozen.
       if (eflg & (MCP2515::EFLG_RX0OVR | MCP2515::EFLG_RX1OVR)) {
         Can_A.clearRXnOVR();
         Serial.println("[CAN A] RX overflow flags cleared");
       }
 
-      // 2) Real bus-off via EFLG_TXBO, not just TX failures.
+      // 2) REAL bus-off via EFLG_TXBO (not only TX failures).
       uint8_t consecutive = mcpTxFailConsecutive;
       bool busOff = (eflg & MCP2515::EFLG_TXBO) || (consecutive > 5);
 
@@ -1052,14 +1564,22 @@ static void canTaskTwai(void* arg) {
       lastCanFrameMs = millis();
 
       switch (f.identifier) {
+        case LEFTSTALK_ID:
+          if (f.data_length_code >= 3) handle249OnCanB(f.data, f.data_length_code);
+          break;
+
         case VISUAL_DEBUG_ID:
           if (f.data_length_code >= 8) {
             visualBehaviorType = (uint8_t)readBitsLE(f.data, 56, 2);
             visualDebugRxCount++;
             visualDebugLastMs = millis();
-            evaluateAutoBlinkerA();
+            evaluateAutoBlinker();
           }
           break;
+
+#if !MODEL_YL
+        // Standard model : summon STATUS frames 280/390/921 are read on CAN B.
+        // On Model YL these are read on CAN A (MCP2515) instead.
         case 280:
           if (f.data_length_code >= 7) handle280(f.data);
           break;
@@ -1069,7 +1589,9 @@ static void canTaskTwai(void* arg) {
         case 921:
           if (f.data_length_code >= 1) handle921(f.data);
           break;
-        case 1016:
+#endif
+        // 1016 (SPR) is read on CAN B for both models.
+        case DRIVER_ASSIST_ID:
           handle1016(f.data, f.data_length_code);
           if (f.data_length_code >= 8) injectUlcConfig(f);
           break;
@@ -1080,13 +1602,17 @@ static void canTaskTwai(void* arg) {
             else if (mux == 0) injectTLSSC(f);
           }
           break;
-        case 817:  // 0x331 DAS_autopilotConfig - TLSSC Restore
+
+        case TLSSC_RESTORE_ID:
           if (f.data_length_code >= 1) injectTlsscRestore(f);
           break;
+
         default:
           break;
       }
     }
+
+    blinkATxTick();
 
     // TWAI status check
     unsigned long now = millis();
@@ -1151,13 +1677,13 @@ void setup() {
   }
 
   // Load configs
+  nagCfgLoad();
   summonCfgLoad();
 
-  Serial.printf("Advanced EAP: TX 0x249 (inject) + RX 0x249/0x2E8 on CAN A (MCP2515)\n");
+  Serial.printf("Nag mode=%u id=0x%03X torqueCount=%u enabled=%u\n",
+    nagCfg.mode, nagCfg.targetId, nagCfg.torqueCount, nagCfg.enabled);
   Serial.printf("Summon enabled=%s\n", summonEnabled ? "true" : "false");
   Serial.printf("TLSSC enabled=%s (0x3FD mux0 bit38)\n", tlsscEnabled ? "true" : "false");
-  Serial.printf("TLSSC Restore enabled=%s (0x331 byte0 low6=0x1B)\n", tlsscRestoreEnabled ? "true" : "false");
-  Serial.printf("Auto-blinker: one-shot %d ms pulse, auto delay %u ms, soft UP_1/DOWN_1, counter aligned on real SCCM 0x249 (CAN A)\n", BLINKA_PULSE_MS, (unsigned)blinkADelayMs);
 
   // Start web task first (Core 0)
   BaseType_t retWeb = xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);
@@ -1169,7 +1695,7 @@ void setup() {
 
   // Driver-wake delay before CAN init
   Serial.println("Driver-wake power detected. Waiting 10 seconds before CAN init...");
-  delay(DRIVER_WAKE_DELAY_MS);
+  delay(NAG_DRIVER_WAKE_DELAY_MS);
 
   // ══ Init CAN A (MCP2515) ══
   Serial.println("[CAN A] Initializing MCP2515...");
@@ -1184,7 +1710,7 @@ void setup() {
   SPI.begin(MCP2515_SCLK, MCP2515_MISO, MCP2515_MOSI, MCP2515_CS);
 
   Can_A.reset();
-  delay(10);                              // >=10 ms after reset (datasheet)
+  delay(10);                              // >=10 ms apres reset (datasheet)
   Can_A.setBitrate(CAN_500KBPS, MCP_CLOCK);
   Can_A.setNormalMode();
   mcpReady = true;
