@@ -33,7 +33,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - OTA Update
 
 ## Branch for Model YL
-- https://github.com/06066060606060/T2CAN-Nag-killer-EU-unlock/tree/Model-YL
+- https://github.com/06066060606060/.....
 
 ## Hardware Target
 
