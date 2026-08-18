@@ -64,7 +64,8 @@ https://github.com/autowp/arduino-mcp2515
 
 - The Wifi AP name will be something like T2CAN-A1B2 (password: 12345678).  
 - Open 192.168.4.1 in a browser.  
-- Use the tabs to switch between Nag Echo and Summon Unlock.  
+- Use the tabs to switch between Advanced-EAP, Nag Echo and Summon Unlock  
+⚠️ Do not enable TLSSC if you do not have the EAP option. 
 
 ## Build firmware using arduino IDE for OTA
 - Open Sketch > Export Compiled Binary.
