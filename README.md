@@ -6,6 +6,7 @@
 > This project interacts with a vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
 ---
 
+
 ## Version1.2b 
 
 ⚠️ you will need another esp32 for Nag-Killer on party CAN.
@@ -61,7 +62,10 @@ https://github.com/autowp/arduino-mcp2515
 ## Files in sketch folder:
 - EU-Advanced-EAP.ino  
 - index_html.h  
-- pin_config.h  
+- pin_config.h
+
+## Confirmed working
+MODEL Y 2024 HW4  (Berlin) Firmware 2026.26.1
 
 ## Wiring
 - CAN A (MCP2515): connect to the Body CAN bus - Nag Killer (9-10)
