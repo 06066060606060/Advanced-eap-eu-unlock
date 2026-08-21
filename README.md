@@ -1,13 +1,16 @@
 
-# Advanced EAP & EU-Unlock V1.2 for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V1.0b for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
 > This project interacts with a vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
 ---
+## removed 1.2b for stability issue
+- madmax settings toggle
+- toggle to restore TLSSC on banned car*
+- toggle to activate TLSSC where it is not available.
 
-
-## Version1.2b 
+## Version1.0b 
 
 ⚠️ you will need another esp32 for Nag-Killer on party CAN.
 
@@ -21,9 +24,6 @@ CAN B Chassis CAN → EU Summon Unlock
 - you can always cancel on screen or with opposite turn signal.  
 
 --------------------EU Unlock------------------
-- Added madmax settings toggle
-- toggle to restore TLSSC on banned car*
-- toggle to activate TLSSC where it is not available.
 - bypass R79 EU restriction in AP
 - Expend summon to +/-  85m
 - expanded lateral acceleration limits
