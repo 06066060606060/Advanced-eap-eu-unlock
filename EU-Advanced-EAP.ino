@@ -12,7 +12,7 @@
 #include "driver/twai.h"
 #include "index_html.h"
 
-#define FW_VERSION "EU-Advanced-EAP.v1.2b"
+#define FW_VERSION "T2CAN-V1.0b-ADV-EAP"
 
 // T-2CAN board specific
 #include "pin_config.h"
@@ -101,16 +101,6 @@ static void eapProcessMcpFrame(const struct can_frame& rxf) {
 // ═══════════════════════════════════════════════════════════════
 #define VISUAL_DEBUG_ID 0x24A
 static volatile uint8_t visualBehaviorType = 0;
-static volatile uint8_t uiUlcBlindSpotConfig = 0;
-
-// ULC injection values for 0x3F8 / UI_driverAssistControl.
-// Values are stored in NVS and applied to incoming CAN B frames while the injection gate is open.
-static volatile uint8_t ulcInjectBlindSpotConfig = 0;
-static volatile uint8_t ulcInjectSpeedConfig = 0;
-
-static volatile uint32_t ulcInjectRxCount = 0;
-static volatile uint32_t ulcInjectTxCount = 0;
-static volatile uint32_t ulcInjectTxFail = 0;
 static volatile uint32_t visualDebugRxCount = 0;
 static volatile uint32_t visualDebugLastMs = 0;
 
@@ -162,17 +152,6 @@ static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len) {
   return val;
 }
 
-static inline void writeBitsLE(uint8_t *data, int startBit, int len, uint32_t value) {
-  for (int i = 0; i < len; i++) {
-    int totalBit = startBit + i;
-    int byteIdx  = totalBit / 8;
-    int bitIdx   = totalBit % 8;
-    uint8_t mask = (uint8_t)(1U << bitIdx);
-    if (value & (1UL << i)) data[byteIdx] |= mask;
-    else                    data[byteIdx] &= (uint8_t)~mask;
-  }
-}
-
 #define STALK_IDLE   0
 #define STALK_UP_1   2
 #define STALK_DOWN_1 7
@@ -213,7 +192,6 @@ static volatile bool forceMode = false;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool summonEnabled = true;
 static volatile bool tlsscEnabled  = false;   // "Enable TLSSC" - off by default
-static volatile bool tlsscRestoreEnabled = false;   // "TLSSC Restore" - off by default
 static volatile bool gateAPActive  = false;
 static volatile bool gateParked    = true;
 static volatile bool gateSummoning = false;
@@ -464,37 +442,10 @@ static void handle921(const uint8_t *data) {
     portEXIT_CRITICAL(&stateMux);
 }
 
-static void injectUlcConfig(const twai_message_t &src) {
-  bool gate, fmode;
-  uint8_t blind, speed;
-
-  portENTER_CRITICAL(&stateMux);
-  gate = injectionGateOpen();
-  fmode = forceMode;
-  blind = ulcInjectBlindSpotConfig;
-  speed = ulcInjectSpeedConfig;
-  portEXIT_CRITICAL(&stateMux);
-
-  if (!gate && !fmode) return;
-
-  twai_message_t out = src;
-  writeBitsLE(out.data, 50, 2, speed & 0x03);
-  writeBitsLE(out.data, 52, 2, blind & 0x03);
-
-  ulcInjectRxCount++;
-  esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
-  if (err == ESP_OK) ulcInjectTxCount++;
-  else               ulcInjectTxFail++;
-}
-
 static void handle1016(const uint8_t *data, uint8_t dlc) {
     if (dlc < 4) return;
     sumRx1016++;
     uint8_t spr = (data[3] >> 4) & 0x0F;
-    if (dlc >= 7) {
-        // UI_ulcBlindSpotConfig: 0x3F8, bits 52-53, little-endian.
-        uiUlcBlindSpotConfig = (data[6] >> 4) & 0x03;
-    }
     portENTER_CRITICAL(&stateMux);
     if (spr != 0)
         sprSeen = true;
@@ -554,39 +505,10 @@ static void injectTLSSC(const twai_message_t &src) {
     else               sumTxFail++;
 }
 
-// TLSSC Restore: 0x331 DAS_autopilotConfig, force both 3-bit fields to SELF_DRIVING (3).
-static void injectTlsscRestore(const twai_message_t &src) {
-    bool en, gate, fmode;
-    portENTER_CRITICAL(&stateMux);
-    en    = tlsscRestoreEnabled;
-    gate  = injectionGateOpen();
-    fmode = forceMode;
-    portEXIT_CRITICAL(&stateMux);
-
-    if ((!en || !gate) && !fmode)
-        return;
-
-    twai_message_t out;
-    out.identifier       = src.identifier;
-    out.data_length_code = src.data_length_code;
-    out.flags            = 0;
-    for (int i = 0; i < 8; i++) out.data[i] = src.data[i];
-
-    // Preserve the top 2 bits of byte 0 and force the low 6 bits to 0x1B.
-    out.data[0] = (uint8_t)((out.data[0] & 0xC0) | 0x1B);
-
-    esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
-    if (err == ESP_OK) sumTxOk++;
-    else               sumTxFail++;
-}
-
 static void summonCfgLoad() {
     prefs.begin("summon", true);
     summonEnabled  = prefs.getBool("en", true);
     tlsscEnabled   = prefs.getBool("tlssc", false);
-    tlsscRestoreEnabled = prefs.getBool("tlrst", false);
-    ulcInjectBlindSpotConfig = prefs.getUChar("ulcbs", 0);
-    ulcInjectSpeedConfig = prefs.getUChar("ulcsp", 0);
     blinkAEnabled  = prefs.getBool("blkA", true);
     blinkADelayMs  = prefs.getUInt("blkADly", BLINKA_AUTO_DELAY_DEFAULT_MS);
     prefs.end();
@@ -596,9 +518,6 @@ static void summonCfgSave() {
     prefs.begin("summon", false);
     prefs.putBool("en", summonEnabled);
     prefs.putBool("tlssc", tlsscEnabled);
-    prefs.putBool("tlrst", tlsscRestoreEnabled);
-    prefs.putUChar("ulcbs", ulcInjectBlindSpotConfig);
-    prefs.putUChar("ulcsp", ulcInjectSpeedConfig);
     prefs.putBool("blkA", blinkAEnabled);
     prefs.putUInt("blkADly", blinkADelayMs);
     prefs.end();
@@ -623,12 +542,11 @@ extern const char INDEX_HTML[] PROGMEM;
 static WebServer server(80);
 
 static String summonStatsToJson() {
-    bool en, tlssc, tlrst, ap, parked, summon, aca, spr, fmode;
+    bool en, tlssc, ap, parked, summon, aca, spr, fmode;
     uint32_t rmx, tok, tfail, r280, r390, r921, r1016;
     portENTER_CRITICAL(&stateMux);
     en     = summonEnabled;
     tlssc  = tlsscEnabled;
-    tlrst  = tlsscRestoreEnabled;
     ap     = gateAPActive;
     parked = gateParked;
     summon = gateSummoning;
@@ -648,7 +566,6 @@ static String summonStatsToJson() {
     String s = "{";
     s += "\"enabled\":"  + String(en     ? "true" : "false");
     s += ",\"tlssc\":"   + String(tlssc  ? "true" : "false");
-    s += ",\"tlrst\":"   + String(tlrst  ? "true" : "false");
     s += ",\"gate\":"    + String(gate   ? "true" : "false");
     s += ",\"ap\":"      + String(ap     ? "true" : "false");
     s += ",\"parked\":"  + String(parked ? "true" : "false");
@@ -659,11 +576,6 @@ static String summonStatsToJson() {
     s += ",\"rxMux1\":"  + String(rmx);
     s += ",\"txOk\":"    + String(tok);
     s += ",\"txFail\":"  + String(tfail);
-    s += ",\"ulcBlind\":" + String((int)ulcInjectBlindSpotConfig);
-    s += ",\"ulcSpeed\":" + String((int)ulcInjectSpeedConfig);
-    s += ",\"ulcRx\":" + String((unsigned long)ulcInjectRxCount);
-    s += ",\"ulcTx\":" + String((unsigned long)ulcInjectTxCount);
-    s += ",\"ulcTxFail\":" + String((unsigned long)ulcInjectTxFail);
     s += ",\"rx280\":"   + String(r280);
     s += ",\"rx390\":"   + String(r390);
     s += ",\"rx921\":"   + String(r921);
@@ -734,7 +646,6 @@ static String dasTelemetryStatsToJson() {
   uint32_t now = millis();
   String s = "{";
   s += "\"behaviorType\":" + String((int)visualBehaviorType);
-  s += ",\"ulcBlindSpotConfig\":" + String((int)uiUlcBlindSpotConfig);
   s += ",\"visualDebugRx\":" + String((unsigned long)visualDebugRxCount);
   s += ",\"visualDebugStaleMs\":" + String(visualDebugLastMs == 0 ? 999999UL : (now - visualDebugLastMs));
   s += "}";
@@ -841,33 +752,6 @@ static void httpSummonTlsscDisable() {
     summonCfgSave();
     server.send(200, "application/json", summonStatsToJson());
 }
-static void httpSummonTlrstEnable() {
-    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = true; portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
-static void httpSummonTlrstDisable() {
-    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = false; portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
-
-static void httpUlcConfigUpdate() {
-    int blind = server.hasArg("blind") ? server.arg("blind").toInt() : ulcInjectBlindSpotConfig;
-    int speed = server.hasArg("speed") ? server.arg("speed").toInt() : ulcInjectSpeedConfig;
-
-    if (blind < 0 || blind > 2 || speed < 0 || speed > 2) {
-        server.send(400, "application/json", "{\"ok\":false,\"error\":\"invalid value\"}");
-        return;
-    }
-
-    portENTER_CRITICAL(&stateMux);
-    ulcInjectBlindSpotConfig = (uint8_t)blind;
-    ulcInjectSpeedConfig = (uint8_t)speed;
-    portEXIT_CRITICAL(&stateMux);
-    summonCfgSave();
-    server.send(200, "application/json", summonStatsToJson());
-}
 
 static void httpSummonForceMode() {
     portENTER_CRITICAL(&stateMux);
@@ -948,9 +832,6 @@ static void webTask(void *arg) {
   server.on("/api/summon/disable",HTTP_POST, httpSummonDisable);
   server.on("/api/summon/tlssc-enable",  HTTP_POST, httpSummonTlsscEnable);
   server.on("/api/summon/tlssc-disable", HTTP_POST, httpSummonTlsscDisable);
-  server.on("/api/summon/tlrst-enable", HTTP_POST, httpSummonTlrstEnable);
-  server.on("/api/summon/tlrst-disable", HTTP_POST, httpSummonTlrstDisable);
-  server.on("/api/summon/ulc-config", HTTP_POST, httpUlcConfigUpdate);
   server.on("/api/summon/forcemode", HTTP_POST, httpSummonForceMode);
   server.on("/api/blinkA/stats",   HTTP_GET,  httpBlinkAStats);
   server.on("/api/blinkA/enable",  HTTP_POST, httpBlinkAEnable);
@@ -1071,7 +952,6 @@ static void canTaskTwai(void* arg) {
           break;
         case 1016:
           handle1016(f.data, f.data_length_code);
-          if (f.data_length_code >= 8) injectUlcConfig(f);
           break;
         case 1021:
           if (f.data_length_code >= 8) {
@@ -1079,9 +959,6 @@ static void canTaskTwai(void* arg) {
             if (mux == 1)      injectSummon(f);
             else if (mux == 0) injectTLSSC(f);
           }
-          break;
-        case 817:  // 0x331 DAS_autopilotConfig - TLSSC Restore
-          if (f.data_length_code >= 1) injectTlsscRestore(f);
           break;
         default:
           break;
@@ -1156,7 +1033,6 @@ void setup() {
   Serial.printf("Advanced EAP: TX 0x249 (inject) + RX 0x249/0x2E8 on CAN A (MCP2515)\n");
   Serial.printf("Summon enabled=%s\n", summonEnabled ? "true" : "false");
   Serial.printf("TLSSC enabled=%s (0x3FD mux0 bit38)\n", tlsscEnabled ? "true" : "false");
-  Serial.printf("TLSSC Restore enabled=%s (0x331 byte0 low6=0x1B)\n", tlsscRestoreEnabled ? "true" : "false");
   Serial.printf("Auto-blinker: one-shot %d ms pulse, auto delay %u ms, soft UP_1/DOWN_1, counter aligned on real SCCM 0x249 (CAN A)\n", BLINKA_PULSE_MS, (unsigned)blinkADelayMs);
 
   // Start web task first (Core 0)
