@@ -314,11 +314,6 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     margin-top: 4px;
   }
   .toggle-row .lbl { font-size: 14px; font-weight: 600; color: var(--txt); text-transform: none; letter-spacing: 0; }
-  .seg-row { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:12px; }
-  .seg-row .lbl { font-size:14px; font-weight:600; color:var(--txt); min-width:150px; }
-  .seg { display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
-  .seg button { padding:8px 11px; border-radius:9px; font-size:11px; }
-  .seg button.active { background:var(--ok); color:#000; border-color:transparent; }
   .switch { position: relative; width: 50px; height: 30px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
   .slider {
@@ -389,7 +384,6 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     <div class="row" style="margin-top:12px">
       <div class="stat"><div class="k">Autopilot active</div><div class="v" id="blkA_ap">—</div></div>
       <div class="stat"><div class="k">Force Mode</div><div class="v" id="blkA_fm">—</div></div>
-      <div class="stat"><div class="k">UI_ulcBlindSpotConfig (CAN B)</div><div class="v" id="blkA_blindspot">—</div></div>
       <div class="stat"><div class="k">Active turn</div><div class="v" id="blkA_turn">—</div></div>
       <div class="stat"><div class="k">Tx ok / fail</div><div class="v" id="blkA_tx">0/0</div></div>
       <div class="stat"><div class="k">CAN A state</div><div class="v" id="blkA_cs">—</div></div>
@@ -473,45 +467,6 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
       <div class="stat full"><div class="k">Uptime</div><div class="v" id="sum_s_up">—</div></div>
     </div>
   </section>
-
-  <section class="panel">
-    <h2>ULC Configuration Injection <span class="iface-note">0x3F8 — CAN B</span></h2>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcBlindSpotConfig</span>
-      <div class="seg" id="ulcBlindSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
-      </div>
-    </div>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcSpeedConfig</span>
-      <div class="seg" id="ulcSpeedSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
-      </div>
-    </div>
-    <div class="seg-row">
-
-    </div>
-    <div class="desc">Selected values are injected into incoming <b>0x3F8 UI_driverAssistControl</b> frames on CAN B while the injection gate is open.</div>
-  </section>
-
-  <section class="panel">
-    <h2>TLSSC Restore For banned car only<span class="iface-note">CAN B — TWAI</span></h2>
-    <div class="toggle-row">
-      <span class="lbl">TLSSC Restore</span>
-      <label class="switch" style="margin:0">
-        <input type="checkbox" id="tlsscRestoreToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="desc">
-      Forces the low 6 bits of byte 0 on <b>0x331</b> to <b>0x1B</b>, setting both DAS_autopilot and DAS_autopilotBase to SELF_DRIVING (3).<br>
-      Disabled by default. Applied only while the injection gate is open.
-    </div>
-  </section>
 </main>
 
 <!-- FIRMWARE / OTA TAB -->
@@ -574,13 +529,6 @@ async function fetchBlinkAStats() {
     const s = await fetch('/api/blinkA/stats').then(r => r.json());
     $('blkA_ap').textContent  = s.apActive ? 'YES' : 'no';
     $('blkA_fm').textContent  = s.forceMode ? 'YES' : 'no';
-
-    try {
-      const d = await fetch('/api/das/stats').then(r => r.json());
-      if (d.ulcBlindSpotConfig !== undefined) {
-        $('blkA_blindspot').textContent = String(d.ulcBlindSpotConfig);
-      }
-    } catch {}
 
     if (s.activeTurn !== undefined)
       $('blkA_turn').textContent = (TURN_NAMES[s.activeTurn] ?? String(s.activeTurn)) + ' (' + s.activeTurn + ')';
@@ -702,13 +650,8 @@ async function fetchSummonStats() {
     const u = s.uptimeS;
     $('sum_s_up').textContent = u < 60 ? u + 's' : Math.floor(u/60) + 'm' + (u%60) + 's';
 
-    setUlcSegment('ulcBlindSeg', s.ulcBlind ?? 0);
-    setUlcSegment('ulcSpeedSeg', s.ulcSpeed ?? 0);
-  
     const tg = $('tlsscToggle');
     if (tg && document.activeElement !== tg) tg.checked = !!s.tlssc;
-    const tr = $('tlsscRestoreToggle');
-    if (tr && document.activeElement !== tr) tr.checked = !!s.tlrst;
 
     $('conn').textContent = 'connected';
     $('conn').className   = 'pill ok';
@@ -727,37 +670,6 @@ $('tlsscToggle').addEventListener('change', (e) => {
   postSummon(e.target.checked ? '/api/summon/tlssc-enable' : '/api/summon/tlssc-disable');
   showToast(e.target.checked ? 'TLSSC enabled' : 'TLSSC disabled');
 });
-
-$('tlsscRestoreToggle').addEventListener('change', (e) => {
-  postSummon(e.target.checked ? '/api/summon/tlrst-enable' : '/api/summon/tlrst-disable');
-  showToast(e.target.checked ? 'TLSSC Restore enabled' : 'TLSSC Restore disabled');
-});
-
-// ===== ULC CONFIGURATION INJECTION JS =====
-const ULC_NAMES = {
-  blind: ['STANDARD','AGGRESSIVE','MAD_MAX'],
-  speed: ['STANDARD','AGGRESSIVE','MAD_MAX'],
-};
-
-function setUlcSegment(id, value) {
-  document.querySelectorAll('#' + id + ' button').forEach(b => {
-    b.classList.toggle('active', Number(b.dataset.value) === Number(value));
-  });
-}
-
-async function setUlcConfig(kind, value) {
-  const s = await fetch('/api/summon/stats').then(r => r.json());
-  let blind = s.ulcBlind ?? 0;
-  let speed = s.ulcSpeed ?? 0;
-  if (kind === 'blind') blind = Number(value);
-  if (kind === 'speed') speed = Number(value);
-  await fetch('/api/summon/ulc-config?blind=' + blind + '&speed=' + speed, {method:'POST'});
-  fetchSummonStats();
-  showToast('ULC configuration updated');
-}
-
-document.querySelectorAll('#ulcBlindSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('blind', b.dataset.value)));
-document.querySelectorAll('#ulcSpeedSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('speed', b.dataset.value)));
 
 // ===== FIRMWARE / SYSTEM JS =====
 async function fetchSystemStats() {
