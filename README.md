@@ -57,8 +57,8 @@ https://github.com/autowp/arduino-mcp2515
 - pin_config.h  
 
 ## Wiring model YL
-- CAN A (MCP2515): connect to the Body CAN bus - Nag Killer & adv-eap (9-10)
-- CAN B (TWAI): connect to the Chassis CAN bus - Summon Unlock (13-14)
+- CAN A (MCP2515): connect to the Party CAN bus - Nag Killer(2-3)
+- CAN B (TWAI): connect to the Body CAN bus - Summon Unlock -  adv-eap(9-10)
 
 ## Dashboard Notes
 
