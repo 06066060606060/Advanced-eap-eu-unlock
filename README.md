@@ -7,7 +7,6 @@
 ---
 ## removed 1.2b for stability issue
 - madmax settings toggle
-- toggle to restore TLSSC on banned car*
 - toggle to activate TLSSC where it is not available.
 
 ## Version1.0b 
