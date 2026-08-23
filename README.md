@@ -21,7 +21,7 @@
 --------------------EU Unlock------------------
 - Added madmax settings toggle  
 - toggle to restore TLSSC on banned car*
-- toggle to activate TLSSC where it is not available.
+- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)  
 - bypass R79 EU restriction in AP
 - Expend summon to +/-  85m
 - expanded lateral acceleration limits
