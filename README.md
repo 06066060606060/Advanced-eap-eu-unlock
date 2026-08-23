@@ -7,7 +7,7 @@
 ---
 ## removed 1.2b for stability issue
 - madmax settings toggle
-- toggle to activate TLSSC where it is not available.
+- toggle to activate TLSSC where it is not available. (you need a valid subscription)
 
 ## Version1.0b 
 
