@@ -5,9 +5,6 @@
 >
 > This project interacts with a vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
 ---
-## removed 1.2b for stability issue
-- madmax settings toggle
-- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)
 
 ## Version1.0b 
 
@@ -30,7 +27,8 @@ CAN B Chassis CAN → EU Summon Unlock
 - instantaneous lane change on blinker (EAP)
 - no lane change timeout once initiated (EAP)
 - takes forks and exits automatically (EAP)
-- Continue on Green with Car in Front (EAP)
+- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)
+- Continue on Green with Car in Front (TLSSC)
 - OTA Update
 
 ## Branch for Model YL
