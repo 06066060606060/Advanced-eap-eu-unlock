@@ -29,7 +29,7 @@
 - instantaneous lane change on blinker (EAP)
 - no lane change timeout once initiated (EAP)
 - takes forks and exits automatically (EAP)
-- Continue on Green with Car in Front (EAP)
+- Continue on Green with Car in Front (TLSSC)
 - OTA Update
 
 ## Hardware Target
