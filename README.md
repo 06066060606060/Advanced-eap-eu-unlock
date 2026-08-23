@@ -7,7 +7,7 @@
 ---
 ## removed 1.2b for stability issue
 - madmax settings toggle
-- toggle to activate TLSSC where it is not available. (you need a valid subscription)
+- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)
 
 ## Version1.0b 
 
@@ -34,7 +34,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - OTA Update
 
 ## Branch for Model YL
-- https://github.com/06066060606060/.....
+- https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
 
 ## Hardware Target
 
