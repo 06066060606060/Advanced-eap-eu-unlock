@@ -11,7 +11,7 @@ CAN A Body CAN → Advanced EAP
 CAN B Chassis CAN → EU Summon Unlock
 
 ## What Update 1.5b Changes
-- reworked can task to avoid RX overflow
+- reworked CAN task to avoid RX overflow
 - Summon stability improvement
 - Tlssc restore toggle for banned car
 
