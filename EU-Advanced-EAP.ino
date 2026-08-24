@@ -12,7 +12,7 @@
 #include "driver/twai.h"
 #include "index_html.h"
 
-#define FW_VERSION "T2CAN-V1.0b-ADV-EAP"
+#define FW_VERSION "ADV-EAP-EU-V1.5b"
 
 // T-2CAN board specific
 #include "pin_config.h"
@@ -52,11 +52,8 @@ static const char* resetReasonName(esp_reset_reason_t r) {
 // ═══════════════════════════════════════════════════════════════
 
 static constexpr CAN_CLOCK MCP_CLOCK = MCP_16MHZ;
-
 static constexpr uint32_t MCP_SPI_HZ = 10000000;
-
 static constexpr uint8_t MCP_RX_BUDGET = 32;
-
 static MCP2515 Can_A(MCP2515_CS, MCP_SPI_HZ, &SPI);
 static volatile uint8_t  mcpState = 0;      // 0=OK, 1=WARN, 2=BUS-OFF
 static volatile uint32_t mcpTxOk = 0;
@@ -68,7 +65,7 @@ static unsigned long lastMcpRecoverMs = 0;
 
 // ═══════════════════════════════════════════════════════════════
 // ADVANCED EAP (CAN A - MCP2515)
-//   TX : SCCM_leftStalk (585 / 0x249) -> auto blinker + manual control
+//   TX : SCCM_leftStalk (585 / 0x249) -> auto blinker
 //   RX : SCCM_leftStalk (585 / 0x249) -> counter/checksum alignment
 // ═══════════════════════════════════════════════════════════════
 
@@ -100,9 +97,16 @@ static void eapProcessMcpFrame(const struct can_frame& rxf) {
 //   behaviorType = bit 56/2
 // ═══════════════════════════════════════════════════════════════
 #define VISUAL_DEBUG_ID 0x24A
-static volatile uint8_t visualBehaviorType = 0;
+static volatile uint8_t visualBehaviorType = 0;												 
 static volatile uint32_t visualDebugRxCount = 0;
 static volatile uint32_t visualDebugLastMs = 0;
+
+// Deferred CAN-B work: only Summon stays on the fast path.
+enum DeferredCanType : uint8_t { DEFER_TLSSC = 1, DEFER_TLSSC_RESTORE = 2, DEFER_VISUAL_DEBUG = 3 };
+struct DeferredCanWork { uint8_t type; twai_message_t frame; };
+static QueueHandle_t canBDeferredQueue = nullptr;
+static volatile uint32_t canBDeferredDrop = 0;
+static void canBDeferredTask(void* arg);
 
 // ═══════════════════════════════════════════════════════════════
 // SUMMON UNLOCK (CAN B - TWAI)
@@ -139,7 +143,7 @@ static inline uint8_t readDASStatus(const uint8_t *data) {
 //   2 = LANE_CHANGE_LEFT, 3 = LANE_CHANGE_RIGHT.
 // Autopilot active or Force Mode must be active. The trigger is delayed
 // by the configurable auto-blinker delay before the one-shot is sent.
-// The manual override remains available.
+
 
 static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len) {
   uint32_t val = 0;
@@ -158,7 +162,7 @@ static inline uint32_t readBitsLE(const uint8_t *data, int startBit, int len) {
 
 #define BLINKA_TX_PERIOD_MS 20
 #define BLINKA_PULSE_MS 350
-#define BLINKA_AUTO_DELAY_DEFAULT_MS 3000
+#define BLINKA_AUTO_DELAY_DEFAULT_MS 1000
 
 // ── SCCM_leftStalk checksum (585 / 0x249) ──
 // Reverse-engineered from real CAN logs: this is NOT a CRC.
@@ -192,12 +196,13 @@ static volatile bool forceMode = false;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool summonEnabled = true;
 static volatile bool tlsscEnabled  = false;   // "Enable TLSSC" - off by default
+static volatile bool tlsscRestoreEnabled = false;   // "TLSSC Restore" - off by default																					   
 static volatile bool gateAPActive  = false;
 static volatile bool gateParked    = true;
 static volatile bool gateSummoning = false;
 static volatile bool sprSeen  = false;
 static volatile bool lastAca  = false;
-#define PARKED_TIMEOUT_MS  5000
+#define PARKED_TIMEOUT_MS  1000
 static volatile uint32_t last280Millis = 0;
 
 static volatile uint32_t sumRxMux1   = 0;
@@ -211,7 +216,6 @@ static char gateBlockReason[48] = "boot";
 
 static volatile bool    blinkAEnabled           = true;
 static volatile uint8_t blinkerReqA             = 0;   // 0=NONE 1=LEFT 2=RIGHT (current requested state)
-static volatile uint8_t manualReq               = 0;   // 0=AUTO 1=LEFT 2=RIGHT (dashboard manual override)
 static volatile uint8_t activeTurn              = STALK_IDLE; // Turn value currently transmitted on 0x249
 static volatile uint8_t lastReqDir              = 0;   // Last behavior-derived direction (edge detection)
 static volatile uint8_t oneShotTurn             = STALK_IDLE; // turn value transmitted during the pulse
@@ -454,30 +458,23 @@ static void handle1016(const uint8_t *data, uint8_t dlc) {
 }
 
 static void injectSummon(const twai_message_t &src) {
-     bool en, gate, fmode;
+    bool en, gate, fmode;
     portENTER_CRITICAL(&stateMux);
-    en   = summonEnabled;
-    gate = injectionGateOpen();
-    fmode = forceMode;
-     if (!gate && !fmode) {
-        if (!gateAPActive  && !gateParked && !gateSummoning)
-            strncpy(gateBlockReason, "AP-,Park-,Summon-", sizeof(gateBlockReason));
-    }
+    en = summonEnabled; gate = injectionGateOpen(); fmode = forceMode;
+    if (!gate && !fmode && !gateAPActive && !gateParked && !gateSummoning)
+        strncpy(gateBlockReason, "AP-,Park-,Summon-", sizeof(gateBlockReason));
     portEXIT_CRITICAL(&stateMux);
-     if ((!en || !gate) && !fmode)
-        return;
+    if ((!en || !gate) && !fmode) return;
 
+    // FAST PATH: no TLSSC / Restore / visual-debug work here.
     twai_message_t out;
-    out.identifier       = src.identifier;
-    out.data_length_code = src.data_length_code;
-    out.flags            = 0;
-    for (int i = 0; i < 8; i++) out.data[i] = src.data[i];
+    out.identifier = 1021; out.data_length_code = 8; out.flags = 0;
+    memcpy(out.data, src.data, 8);
     setBit(out.data, 19, false);
     setBit(out.data, 47, true);
     sumRxMux1++;
     esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
-    if (err == ESP_OK) sumTxOk++;
-    else               sumTxFail++;
+    if (err == ESP_OK) sumTxOk++; else sumTxFail++;
 }
 
 // ── TLSSC : 0x3FD mux0 bit38 -> UI_fsdStopsControlEnabled = 1 ──
@@ -505,10 +502,50 @@ static void injectTLSSC(const twai_message_t &src) {
     else               sumTxFail++;
 }
 
+// TLSSC Restore: 0x331 DAS_autopilotConfig, force both 3-bit fields to SELF_DRIVING (3).
+static void injectTlsscRestore(const twai_message_t &src) {
+    bool en, gate, fmode;
+    portENTER_CRITICAL(&stateMux);
+    en    = tlsscRestoreEnabled;
+    gate  = injectionGateOpen();
+    fmode = forceMode;
+    portEXIT_CRITICAL(&stateMux);
+
+    if ((!en || !gate) && !fmode)
+        return;
+
+    twai_message_t out;
+    out.identifier       = src.identifier;
+    out.data_length_code = src.data_length_code;
+    out.flags            = 0;
+    for (int i = 0; i < 8; i++) out.data[i] = src.data[i];
+
+    // Preserve the top 2 bits of byte 0 and force the low 6 bits to 0x1B.
+    out.data[0] = (uint8_t)((out.data[0] & 0xC0) | 0x1B);
+
+    esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
+    if (err == ESP_OK) sumTxOk++;
+    else               sumTxFail++;
+}																					 
+static void canBDeferredTask(void* arg) {
+    DeferredCanWork work;
+    for (;;) {
+        if (xQueueReceive(canBDeferredQueue, &work, portMAX_DELAY) == pdTRUE) {
+            switch (work.type) {
+                case DEFER_TLSSC: injectTLSSC(work.frame); break;
+                case DEFER_TLSSC_RESTORE: injectTlsscRestore(work.frame); break;
+                case DEFER_VISUAL_DEBUG: evaluateAutoBlinkerA(); break;
+                default: break;
+            }
+        }
+    }
+}
+
 static void summonCfgLoad() {
     prefs.begin("summon", true);
     summonEnabled  = prefs.getBool("en", true);
     tlsscEnabled   = prefs.getBool("tlssc", false);
+	tlsscRestoreEnabled = prefs.getBool("tlrst", false);													
     blinkAEnabled  = prefs.getBool("blkA", true);
     blinkADelayMs  = prefs.getUInt("blkADly", BLINKA_AUTO_DELAY_DEFAULT_MS);
     prefs.end();
@@ -518,6 +555,7 @@ static void summonCfgSave() {
     prefs.begin("summon", false);
     prefs.putBool("en", summonEnabled);
     prefs.putBool("tlssc", tlsscEnabled);
+	prefs.putBool("tlrst", tlsscRestoreEnabled);											
     prefs.putBool("blkA", blinkAEnabled);
     prefs.putUInt("blkADly", blinkADelayMs);
     prefs.end();
@@ -542,11 +580,12 @@ extern const char INDEX_HTML[] PROGMEM;
 static WebServer server(80);
 
 static String summonStatsToJson() {
-    bool en, tlssc, ap, parked, summon, aca, spr, fmode;
+    bool en, tlssc, tlrst, ap, parked, summon, aca, spr, fmode;
     uint32_t rmx, tok, tfail, r280, r390, r921, r1016;
     portENTER_CRITICAL(&stateMux);
     en     = summonEnabled;
     tlssc  = tlsscEnabled;
+	tlrst  = tlsscRestoreEnabled;							 
     ap     = gateAPActive;
     parked = gateParked;
     summon = gateSummoning;
@@ -566,6 +605,7 @@ static String summonStatsToJson() {
     String s = "{";
     s += "\"enabled\":"  + String(en     ? "true" : "false");
     s += ",\"tlssc\":"   + String(tlssc  ? "true" : "false");
+	s += ",\"tlrst\":"   + String(tlrst  ? "true" : "false");														 
     s += ",\"gate\":"    + String(gate   ? "true" : "false");
     s += ",\"ap\":"      + String(ap     ? "true" : "false");
     s += ",\"parked\":"  + String(parked ? "true" : "false");
@@ -597,7 +637,6 @@ static String blinkAStatsToJson() {
   portENTER_CRITICAL(&blinkAMux);
   en      = blinkAEnabled;
   req     = blinkerReqA;
-  man     = manualReq;
   curTurn = activeTurn;
   tok     = blkATxOk;
   tfail   = blkATxFail;
@@ -622,7 +661,6 @@ static String blinkAStatsToJson() {
   s += ",\"apActive\":"     + String(ap ? "true" : "false");
   s += ",\"forceMode\":"    + String(fmode ? "true" : "false");
   s += ",\"request\":"      + String(req);
-  s += ",\"manual\":"       + String(man);
   s += ",\"activeTurn\":"   + String(curTurn);
   s += ",\"delayMs\":"      + String(dly);
   s += ",\"autoArmed\":"    + String(armed ? "true" : "false");
@@ -752,6 +790,16 @@ static void httpSummonTlsscDisable() {
     summonCfgSave();
     server.send(200, "application/json", summonStatsToJson());
 }
+static void httpSummonTlrstEnable() {
+    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = true; portEXIT_CRITICAL(&stateMux);
+    summonCfgSave();
+    server.send(200, "application/json", summonStatsToJson());
+}
+static void httpSummonTlrstDisable() {
+    portENTER_CRITICAL(&stateMux); tlsscRestoreEnabled = false; portEXIT_CRITICAL(&stateMux);
+    summonCfgSave();
+    server.send(200, "application/json", summonStatsToJson());
+}									 
 
 static void httpSummonForceMode() {
     portENTER_CRITICAL(&stateMux);
@@ -774,30 +822,7 @@ static void httpBlinkADisable() {
     summonCfgSave();
     server.send(200, "application/json", blinkAStatsToJson());
 }
-// Manual blinker trigger: ?dir=left|right|off
-// Each press arms one soft one-shot pulse independently of the auto-blinker.
-// "off" only cancels the active pulse and returns control to auto mode.
-static void httpBlinkAManual() {
-    uint8_t man = 0;
-    if (server.hasArg("dir")) {
-        String d = server.arg("dir");
-        if      (d == "left")  man = 1;
-        else if (d == "right") man = 2;
-        else                   man = 0; // off / stop
-    }
-    portENTER_CRITICAL(&blinkAMux);
-    manualReq = man;   // Dashboard display only; the pulse is handled below.
-    if (man != 0) {
-        oneShotTurn  = dirToTurn(man);       // 1=left->DOWN_1, 2=right->UP_1
-        oneShotUntil = millis() + BLINKA_PULSE_MS;
-        lastReqDir   = 0;  // ne bloque pas un futur front auto
-    } else {
-        oneShotTurn  = STALK_IDLE;
-        oneShotUntil = 0;                    // stop immediat
-    }
-    portEXIT_CRITICAL(&blinkAMux);
-    server.send(200, "application/json", blinkAStatsToJson());
-}
+
 // Set the auto-blinker delay in milliseconds (0..30000).
 static void httpBlinkADelay() {
     if (server.hasArg("ms")) {
@@ -832,11 +857,12 @@ static void webTask(void *arg) {
   server.on("/api/summon/disable",HTTP_POST, httpSummonDisable);
   server.on("/api/summon/tlssc-enable",  HTTP_POST, httpSummonTlsscEnable);
   server.on("/api/summon/tlssc-disable", HTTP_POST, httpSummonTlsscDisable);
+  server.on("/api/summon/tlrst-enable", HTTP_POST, httpSummonTlrstEnable);
+  server.on("/api/summon/tlrst-disable", HTTP_POST, httpSummonTlrstDisable);																		  
   server.on("/api/summon/forcemode", HTTP_POST, httpSummonForceMode);
   server.on("/api/blinkA/stats",   HTTP_GET,  httpBlinkAStats);
   server.on("/api/blinkA/enable",  HTTP_POST, httpBlinkAEnable);
   server.on("/api/blinkA/disable", HTTP_POST, httpBlinkADisable);
-  server.on("/api/blinkA/manual",  HTTP_POST, httpBlinkAManual);
   server.on("/api/blinkA/delay",   HTTP_POST, httpBlinkADelay);
   server.on("/api/system/stats",  HTTP_GET,  httpSystemStats);
   server.on("/api/das/stats",     HTTP_GET,  httpDasTelemetryStats);
@@ -921,7 +947,6 @@ static void canTaskMcp(void* arg) {
 }
 
 static void canTaskTwai(void* arg) {
-  Serial.println("[CAN B] TWAI task started");
   unsigned long lastTwaiStatusMs = 0;
   unsigned long lastNoCanWarn = 0;
 
@@ -938,7 +963,10 @@ static void canTaskTwai(void* arg) {
             visualBehaviorType = (uint8_t)readBitsLE(f.data, 56, 2);
             visualDebugRxCount++;
             visualDebugLastMs = millis();
-            evaluateAutoBlinkerA();
+            if (canBDeferredQueue) {
+              DeferredCanWork w{DEFER_VISUAL_DEBUG, f};
+              if (xQueueSend(canBDeferredQueue, &w, 0) != pdTRUE) canBDeferredDrop++;
+            }
           }
           break;
         case 280:
@@ -956,10 +984,20 @@ static void canTaskTwai(void* arg) {
         case 1021:
           if (f.data_length_code >= 8) {
             uint8_t mux = readMuxID(f.data);
-            if (mux == 1)      injectSummon(f);
-            else if (mux == 0) injectTLSSC(f);
+            if (mux == 1) {
+              injectSummon(f);
+            } else if (mux == 0 && canBDeferredQueue) {
+              DeferredCanWork w{DEFER_TLSSC, f};
+              if (xQueueSend(canBDeferredQueue, &w, 0) != pdTRUE) canBDeferredDrop++;
+            }
           }
           break;
+		    case 817:  // 0x331 DAS_autopilotConfig - TLSSC Restore
+          if (f.data_length_code >= 1 && canBDeferredQueue) {
+            DeferredCanWork w{DEFER_TLSSC_RESTORE, f};
+            if (xQueueSend(canBDeferredQueue, &w, 0) != pdTRUE) canBDeferredDrop++;
+          }
+          break;													   
         default:
           break;
       }
@@ -967,7 +1005,7 @@ static void canTaskTwai(void* arg) {
 
     // TWAI status check
     unsigned long now = millis();
-    if (now - lastTwaiStatusMs >= 5000) {
+    if (now - lastTwaiStatusMs >= 1000) {
       lastTwaiStatusMs = now;
       twai_status_info_t st;
       if (twai_get_status_info(&st) == ESP_OK) {
@@ -1008,13 +1046,6 @@ void setup() {
 
   rtcBootCount++;
   esp_reset_reason_t reset_reason = esp_reset_reason();
-  Serial.printf("\n=== T2CAN Unified BOOT ===\n");
-  Serial.printf("Reset reason: %d (%s)\n", reset_reason, resetReasonName(reset_reason));
-  Serial.printf("RTC boot count: %lu\n", (unsigned long)rtcBootCount);
-  if (reset_reason == ESP_RST_BROWNOUT) {
-    Serial.println("WARNING: Brownout detected!");
-  }
-  Serial.printf("IDF version: %s\n", esp_get_idf_version());
 
   // NVS init
   esp_err_t err = nvs_flash_init();
@@ -1023,17 +1054,10 @@ void setup() {
     ESP_ERROR_CHECK(nvs_flash_erase());
     err = nvs_flash_init();
   }
-  if (err != ESP_OK) {
-    Serial.printf("NVS: Init failed %d\n", err);
-  }
+
 
   // Load configs
   summonCfgLoad();
-
-  Serial.printf("Advanced EAP: TX 0x249 (inject) + RX 0x249/0x2E8 on CAN A (MCP2515)\n");
-  Serial.printf("Summon enabled=%s\n", summonEnabled ? "true" : "false");
-  Serial.printf("TLSSC enabled=%s (0x3FD mux0 bit38)\n", tlsscEnabled ? "true" : "false");
-  Serial.printf("Auto-blinker: one-shot %d ms pulse, auto delay %u ms, soft UP_1/DOWN_1, counter aligned on real SCCM 0x249 (CAN A)\n", BLINKA_PULSE_MS, (unsigned)blinkADelayMs);
 
   // Start web task first (Core 0)
   BaseType_t retWeb = xTaskCreatePinnedToCore(webTask, "web", 8192, nullptr, 1, nullptr, 0);
@@ -1064,12 +1088,8 @@ void setup() {
   Can_A.setBitrate(CAN_500KBPS, MCP_CLOCK);
   Can_A.setNormalMode();
   mcpReady = true;
-  Serial.printf("[CAN A] MCP2515 ready (500 kbps, clk=%s)\n",
-                (MCP_CLOCK == MCP_16MHZ) ? "16MHz" :
-                (MCP_CLOCK == MCP_8MHZ)  ? "8MHz" : "20MHz");
 
   // ══ Init CAN B (TWAI) ══
-  Serial.println("[CAN B] Initializing TWAI...");
   twai_general_config_t g = TWAI_GENERAL_CONFIG_DEFAULT(
       (gpio_num_t)CAN_TX, (gpio_num_t)CAN_RX, TWAI_MODE_NORMAL);
   g.rx_queue_len = 256;
@@ -1100,14 +1120,27 @@ void setup() {
   delay(100);
 
   // Start CAN tasks
-  BaseType_t retMcp = xTaskCreatePinnedToCore(canTaskMcp, "canA", 8192, nullptr, 5, nullptr, 1);
+  canBDeferredQueue = xQueueCreate(32, sizeof(DeferredCanWork));
+  if (!canBDeferredQueue) {
+    Serial.println("CAN B deferred queue creation failed! Rebooting...");
+    delay(3000);
+    ESP.restart();
+  }
+  BaseType_t retDeferred = xTaskCreatePinnedToCore(canBDeferredTask, "canB_low", 4096, nullptr, 2, nullptr, 1);
+  if (retDeferred != pdPASS) {
+    Serial.printf("CAN B deferred task creation failed: %d\n", retDeferred);
+    delay(3000);
+    ESP.restart();
+  }
+
+  BaseType_t retMcp = xTaskCreatePinnedToCore(canTaskMcp, "canA", 8192, nullptr, 4, nullptr, 1);
   if (retMcp != pdPASS) {
     Serial.printf("CAN A task creation failed: %d\n", retMcp);
     delay(3000);
     ESP.restart();
   }
 
-  BaseType_t retTwai = xTaskCreatePinnedToCore(canTaskTwai, "canB", 8192, nullptr, 4, nullptr, 1);
+  BaseType_t retTwai = xTaskCreatePinnedToCore(canTaskTwai, "canB", 8192, nullptr, 5, nullptr, 1);
   if (retTwai != pdPASS) {
     Serial.printf("CAN B task creation failed: %d\n", retTwai);
     delay(3000);
@@ -1118,29 +1151,5 @@ void setup() {
 }
 
 void loop() {
-  static unsigned long lastBeatLog = 0;
-  static uint32_t loopBeat = 0;
-  loopBeat++;
-  unsigned long now = millis();
-
-  if (now - lastBeatLog >= 5000) {
-    lastBeatLog = now;
-    unsigned long canAgeMs = (lastCanFrameMs == 0) ? 999999 : (now - lastCanFrameMs);
-    Serial.printf(
-      "[BEAT] uptime=%lu loop=%lu canBeat=%lu canRxBeat=%lu webBeat=%lu canFrames=%lu canAgeMs=%lu mcpTxOk=%lu mcpTxFail=%lu sumTxOk=%lu sumTxFail=%lu heap=%u\n",
-      now / 1000,
-      (unsigned long)loopBeat,
-      (unsigned long)canBeat,
-      (unsigned long)canRxBeat,
-      (unsigned long)webBeat,
-      (unsigned long)canAnyFrames,
-      canAgeMs,
-      (unsigned long)mcpTxOk,
-      (unsigned long)mcpTxFail,
-      (unsigned long)sumTxOk,
-      (unsigned long)sumTxFail,
-      ESP.getFreeHeap()
-    );
-  }
-  vTaskDelay(pdMS_TO_TICKS(1000));
+  vTaskDelay(pdMS_TO_TICKS(50));
 }
