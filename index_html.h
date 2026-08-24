@@ -364,15 +364,14 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
       </label>
     </div>
     <div class="desc">
-      Triggered when <b>DAS_behaviorType</b> (0x24A · <b>DAS_visualDebug</b>) becomes <b>LANE_CHANGE_LEFT (2)</b> or <b>LANE_CHANGE_RIGHT (3)</b>, while <b>Autopilot</b> is active or <b>Force Mode</b> is enabled. The trigger is delayed by <b>N ms</b> after detection; the delay is configurable below.<br>
+      Triggered when <b>DAS_behaviorType</b> (0x24A · <b>DAS_visualDebug</b>) becomes <b>LANE_CHANGE_LEFT (2)</b> or <b>LANE_CHANGE_RIGHT (3)</b>, while <b>Autopilot</b> is active. The trigger is delayed by <b>N ms</b> after detection; the delay is configurable below.<br>
       Sends <b>SCCM_turnIndicatorStalkStatus</b> (0x249) as a <b>single pulse</b> (~350 ms) through <b>CAN A (MCP2515)</b>. One lane-change event produces one pulse and the native three-blink behavior.<br>
-      <b>Soft</b> behavior: left → DOWN_1, right → UP_1.<br>
-      Checksum and rolling counter are calculated from the reverse-engineered SCCM model. UP values are log-verified; DOWN values are extrapolated. Test while stationary / in Park first.
+      Checksum and rolling counter are calculated from the reverse-engineered SCCM model.
     </div>
     <div class="row" style="margin-top:12px;align-items:flex-end;">
       <div style="flex:1">
         <div class="k" style="margin-bottom:6px">Delay before trigger (ms) · 0–30000</div>
-        <input type="number" id="blkA_delay_in" min="0" max="30000" step="100" value="3000" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #2a3550;background:#0e1524;color:#e8eefc;font-size:15px;">
+        <input type="number" id="blkA_delay_in" min="0" max="30000" step="100" value="1000" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #2a3550;background:#0e1524;color:#e8eefc;font-size:15px;">
       </div>
       <button class="primary" id="blkA_delay_apply" style="width:120px">Apply</button>
     </div>
@@ -418,7 +417,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
     <div class="tbar">
       <button class="primary" onclick="postSummon('/api/summon/enable')">Enable</button>
       <button class="danger" onclick="postSummon('/api/summon/disable')">Disable</button>
-      <button class="warn" id="btnForceMode">AP injection</button>
+      <button class="warn" id="btnForceMode" disabled>AP injection</button>
     </div>
   </section>
 
@@ -465,6 +464,20 @@ const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
       <div class="stat"><div class="k">TX fail</div><div class="v" id="sum_s_fail">—</div></div>
       <div class="stat"><div class="k">CAN B state</div><div class="v" id="sum_s_can">—</div></div>
       <div class="stat full"><div class="k">Uptime</div><div class="v" id="sum_s_up">—</div></div>
+    </div>
+  </section>
+<section class="panel">
+    <h2>TLSSC Restore For banned car only<span class="iface-note">CAN B — TWAI</span></h2>
+    <div class="toggle-row">
+      <span class="lbl">TLSSC Restore</span>
+      <label class="switch" style="margin:0">
+        <input type="checkbox" id="tlsscRestoreToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+    <div class="desc">
+      Forces the low 6 bits of byte 0 on <b>0x331</b> to <b>0x1B</b>, setting both DAS_autopilot and DAS_autopilotBase to SELF_DRIVING (3).<br>
+      Disabled by default. Applied only while the injection gate is open.
     </div>
   </section>
 </main>
@@ -652,6 +665,8 @@ async function fetchSummonStats() {
 
     const tg = $('tlsscToggle');
     if (tg && document.activeElement !== tg) tg.checked = !!s.tlssc;
+	 const tr = $('tlsscRestoreToggle');
+    if (tr && document.activeElement !== tr) tr.checked = !!s.tlrst;								   
 
     $('conn').textContent = 'connected';
     $('conn').className   = 'pill ok';
@@ -669,6 +684,11 @@ async function postSummon(url) {
 $('tlsscToggle').addEventListener('change', (e) => {
   postSummon(e.target.checked ? '/api/summon/tlssc-enable' : '/api/summon/tlssc-disable');
   showToast(e.target.checked ? 'TLSSC enabled' : 'TLSSC disabled');
+});
+
+$('tlsscRestoreToggle').addEventListener('change', (e) => {
+  postSummon(e.target.checked ? '/api/summon/tlrst-enable' : '/api/summon/tlrst-disable');
+  showToast(e.target.checked ? 'TLSSC Restore enabled' : 'TLSSC Restore disabled');
 });
 
 // ===== FIRMWARE / SYSTEM JS =====
