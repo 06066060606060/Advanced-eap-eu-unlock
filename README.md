@@ -1,17 +1,20 @@
 
-# Advanced EAP & EU-Unlock V1.0b for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V1.5b for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
 > This project interacts with a vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
 ---
-
-## Version1.0b 
-
 ⚠️ you will need another esp32 for Nag-Killer on party CAN.
 
 CAN A Body CAN → Advanced EAP  
 CAN B Chassis CAN → EU Summon Unlock
+
+## What Update 1.5b Changes
+- reworked can task to avoid RX overflow
+- Summon stability improvement
+- Tlssc restore toggle for banned car
+
 
 -----------------Advanced EAP----------------  
 - automatically activates the turn signal (delay can be set on the dashboard)  
@@ -31,7 +34,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - Continue on Green with Car in Front (TLSSC)
 - OTA Update
 
-## Branch for Model YL
+## Branch for Model YL (alpha version fix soon)
 - https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
 
 ## Hardware Target
