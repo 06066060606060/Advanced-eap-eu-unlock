@@ -10,6 +10,10 @@
 CAN A Body CAN → Advanced EAP  
 CAN B Chassis CAN → EU Summon Unlock
 
+## know bug
+- auto blinker doesn't work sometime after a reboot (fix really soon)
+
+
 ## What Update 1.5b Changes
 - reworked CAN task to avoid RX overflow
 - Summon stability improvement
