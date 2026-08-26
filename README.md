@@ -1,6 +1,6 @@
 
 
-# Nag-killer Advanced EAP & EU-Unlock V2.3 Model YL version for LilyGO/T-2Can  
+# Nag-killer Advanced EAP & EU-Unlock V2.0 Model YL version for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
@@ -9,7 +9,7 @@
 
 
 
-## Version2.3 by LP YL
+## Version2.0 by LP YL
 
 -----------------Nag Killer------------------    
 - remove nag  
