@@ -35,7 +35,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - instantaneous lane change on blinker (EAP)
 - no lane change timeout once initiated (EAP)
 - takes forks and exits automatically (EAP)
-- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)
+- toggle to activate TLSSC where it is not available. (not needed if you restore TLSSC)
 - Continue on Green with Car in Front (TLSSC)
 - OTA Update
 
