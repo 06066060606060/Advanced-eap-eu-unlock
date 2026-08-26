@@ -39,8 +39,8 @@ This fork was adapted for:
 
 | Device                       | Can Transceiver                         | CAN RX / CAN TX   | Can Bus      | Power                     |
 | ---------------------------- | --------------------------------------- | ----------------- | ------------ | ------------------------- |
-| LilyGO/T-2Can                |CAN A Party CAN → Nag Killer & EU Unlock |                   |              |                           |
-|                              |CAN B Body/VH CAN → EU Unlock & Adv EAP  |                   | 500 kbps CAN | USB-C or stable 12V supply|
+| LilyGO/T-2Can                |CAN A Party CAN                          |                   |              |                           |
+|                              |CAN B Body/VH CAN                        |                   | 500 kbps CAN | USB-C or stable 12V supply|
 
 Don't forget to remove the two 120-ohm resistors which can cause signal errors.   
 <img width="407" height="180" alt="LILYGO-T-2CAN_9" src="https://github.com/user-attachments/assets/0d272b7e-bd82-408f-9ca1-239e6dab44d5" />
