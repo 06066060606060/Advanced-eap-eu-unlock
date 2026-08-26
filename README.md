@@ -1,5 +1,5 @@
 
-# Advanced EAP & EU-Unlock V1.5b for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V2.0b for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
@@ -10,14 +10,11 @@
 CAN A Body CAN → Advanced EAP  
 CAN B Chassis CAN → EU Summon Unlock
 
-## know bug
-- auto blinker doesn't work sometime after a reboot (fix really soon)
 
-
-## What Update 1.5b Changes
-- reworked CAN task to avoid RX overflow
-- Summon stability improvement
-- Tlssc restore toggle for banned car
+## What Update 2.0b Changes
+- completly reworked code based on LP_YL update
+- New dashboard design by LP_YL
+- toggle to activate Auto lane change in AP/NOA or NOA only
 
 
 -----------------Advanced EAP----------------  
