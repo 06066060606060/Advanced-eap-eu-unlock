@@ -1,4 +1,5 @@
 
+
 # Nag-killer Advanced EAP & EU-Unlock V2.3 Model YL version for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
@@ -29,6 +30,8 @@
 - takes forks and exits automatically (EAP)
 - Continue on Green with Car in Front (TLSSC)
 - OTA Update
+
+  <img width="301" height="655" alt="IMG_1839" src="https://github.com/user-attachments/assets/9b9cdb59-b0e8-45e1-8369-70a5b4e1fdab" />
 
 ## Hardware Target
 
