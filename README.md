@@ -18,7 +18,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - TLSSC injection with an AP-active-only gate
 - CAN A/B self-healing and Hard Reinitialize
 - Runtime and boot timing diagnostics
-- restore TLSSC for banned car
+- restore TLSSC for banned car (Cause MCU reboot)
 
 
 -----------------Advanced EAP----------------  
