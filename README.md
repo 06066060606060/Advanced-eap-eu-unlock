@@ -1,5 +1,4 @@
-
-# Advanced EAP & EU-Unlock V2.0b for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V2.0b for LilyGO/T-2Can (ban version)
 
 > ⚠️ Research / educational firmware only.
 >
@@ -12,9 +11,14 @@ CAN B Chassis CAN → EU Summon Unlock
 
 
 ## What Update 2.0b Changes
-- completly reworked code based on LP_YL update
+- completly reworked code 
 - New dashboard design by LP_YL
 - toggle to activate Auto lane change in AP/NOA or NOA only
+- Summon TX Priority state machine
+- TLSSC injection with an AP-active-only gate
+- CAN A/B self-healing and Hard Reinitialize
+- Runtime and boot timing diagnostics
+- restore TLSSC for banned car
 
 
 -----------------Advanced EAP----------------  
@@ -37,9 +41,6 @@ CAN B Chassis CAN → EU Summon Unlock
 
 ## Branch for Model YL
 - https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
-
-  <img width="270" height="475" alt="Capture d’écran 2026-08-26 193107" src="https://github.com/user-attachments/assets/89c3b65e-4166-4c1a-ba6c-76c84b55db34" />
-
 
 ## Hardware Target
 
@@ -101,7 +102,7 @@ Lightning: ₿cakegrip53@phoenixwallet.me
 ## Credits
 
 - Inspired by `Ev Open Can Mod` https://github.com/ev-open-can-tools/ev-open-can-tools
-- Created by X₿mod.
+- Created by X₿mod updated by LP_YL
 - ESP32 TWAI driver by Espressif Systems
 - Automotive CAN research community
 
