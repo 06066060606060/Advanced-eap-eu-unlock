@@ -14,7 +14,7 @@
 -----------------Nag Killer------------------    
 - remove nag  
 -----------------Advanced EAP----------------  
-- automatically activates the turn signal (delay can be set on the dashboard)  
+- automatically activates the turn signal in NOA (delay can be set on the dashboard)  
 - All lane change safety features are maintained.  
 - the turn signal start only when the vehicle request a lane change,  
 - you can always cancel on screen or with opposite turn signal.  
