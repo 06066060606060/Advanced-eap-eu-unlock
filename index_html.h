@@ -1,1133 +1,173 @@
-const char INDEX_HTML[] PROGMEM = R"HTML(<!doctype html>
-<html lang="en">
+const char INDEX_HTML[] PROGMEM = R"HTML(
+<!doctype html>
+<html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>T2CAN Unified</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#151515">
+<title>MODEL YL UNLOCK</title>
 <style>
-  :root {
-    --bg: #0d0d0d;
-    --panel: #161618;
-    --card: #1c1c1e;
-    --line: #2c2c2e;
-    --txt: #f5f5f7;
-    --muted: #8e8e93;
-    --accent: #0a84ff;
-    --ok: #30d158;
-    --warn: #ff9f0a;
-    --bad: #ff453a;
-  }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--txt);
-    font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    -webkit-font-smoothing: antialiased;
-  }
-  header {
-    padding: 18px 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-  header h1 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 700;
-    color: var(--txt);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  header h1::before {
-    content: "⚡";
-    font-size: 14px;
-    opacity: 0.7;
-  }
-  header .pill {
-    font-size: 12px;
-    padding: 5px 12px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 500;
-  }
-  header .pill::before {
-    content: "";
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--warn);
-    display: inline-block;
-  }
-  header .pill.ok::before { background: var(--ok); }
-  header .pill.bad::before { background: var(--bad); }
-  .tabs {
-    display: flex;
-    gap: 8px;
-    padding: 0 20px 14px;
-    max-width: 460px;
-    margin: 0 auto;
-    flex-wrap: wrap;
-  }
-  .tab-btn {
-    background: var(--card);
-    border: 1px solid var(--line);
-    color: var(--muted);
-    padding: 9px 16px;
-    border-radius: 12px;
-    cursor: pointer;
-    font: inherit;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.15s ease;
-  }
-  .tab-btn:hover { filter: brightness(1.2); }
-  .tab-btn.active { background: var(--txt); color: var(--bg); border-color: transparent; }
-  main {
-    max-width: 460px;
-    margin: 0 auto;
-    padding: 0 16px 24px;
-    display: none;
-    gap: 16px;
-  }
-  main.active { display: grid; }
-  .panel {
-    background: var(--panel);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 18px;
-  }
-  .panel h2 {
-    margin: 0 0 14px;
-    font-size: 14px;
-    font-weight: 700;
-    color: var(--txt);
-  }
-  .panel h2 .iface-note {
-    font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--muted);
-    margin-left: 8px;
-  }
-  .row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .row.row3 { grid-template-columns: 1fr 1fr 1fr; }
-  .stat {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 14px 12px;
-    min-height: 80px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-  }
-  .stat .k {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--muted);
-    font-weight: 600;
-    line-height: 1.3;
-  }
-  .stat .v {
-    font-size: 20px;
-    font-weight: 700;
-    margin-top: 6px;
-    color: var(--txt);
-    letter-spacing: -0.02em;
-    overflow-wrap: anywhere;
-  }
-  .stat.full { grid-column: 1 / -1; }
-  .big-state {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 18px 14px;
-    font-size: 28px;
-    font-weight: 700;
-    letter-spacing: -0.02em;
-    text-align: center;
-  }
-  .big-state.off  { color: var(--txt); }
-  .big-state.on   { color: var(--ok); }
-  .big-state.warn { color: var(--warn); }
-  .big-state.bad  { color: var(--bad); }
-  .tbar {
-    display: flex;
-    gap: 10px;
-    margin-top: 14px;
-    flex-wrap: wrap;
-  }
-  button {
-    font: inherit;
-    cursor: pointer;
-    background: var(--card);
-    color: var(--txt);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 10px 20px;
-    font-size: 13px;
-    font-weight: 600;
-    transition: all 0.15s ease;
-  }
-  button:hover { filter: brightness(1.2); }
-  button:active { transform: scale(0.97); }
-  button[disabled] { opacity: .5; cursor: not-allowed; }
-  button.primary {
-    background: var(--txt);
-    color: var(--bg);
-    border-color: transparent;
-  }
-  button.danger {
-    background: var(--card);
-    color: var(--bad);
-    border-color: #3a1f23;
-  }
-  button.warn {
-    background: var(--warn);
-    color: #000;
-    border-color: transparent;
-  }
-  .desc {
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.6;
-    margin-top: 8px;
-  }
-  .desc b { color: var(--txt); font-weight: 600; }
-  .ok { color: var(--ok); }
-  .warn { color: var(--warn); }
-  .bad { color: var(--bad); }
-  .footer {
-    color: var(--muted);
-    font-size: 11px;
-    text-align: center;
-    padding: 14px 0;
-    line-height: 1.6;
-  }
-  .footer a { color: var(--muted); text-decoration: none; }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    color: var(--muted);
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-weight: 600;
-  }
-  input[type=text], input[type=number] {
-    background: var(--card);
-    border: 1px solid var(--line);
-    color: var(--txt);
-    border-radius: 10px;
-    padding: 9px 10px;
-    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    width: 100%;
-  }
-  input[type=file] {
-    width: 100%;
-    font-size: 12px;
-    color: var(--muted);
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    padding: 10px 12px;
-  }
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); font-size: 12px; }
-  th { color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; font-size: 10px; }
-  td input { width: 90%; }
-  details { margin-top: 14px; }
-  summary { cursor: pointer; color: var(--muted); font-size: 12px; font-weight: 600; }
-  .progress {
-    width: 100%;
-    height: 8px;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-top: 12px;
-    display: none;
-  }
-  .progress.show { display: block; }
-  .progress-bar {
-    height: 100%;
-    width: 0%;
-    background: var(--accent);
-    transition: width 0.15s ease;
-  }
-  .ota-msg {
-    font-size: 12px;
-    margin-top: 10px;
-    color: var(--muted);
-  }
-  .ota-msg.ok  { color: var(--ok); }
-  .ota-msg.bad { color: var(--bad); }
-  .gate-status {
-    text-align: center;
-    font-size: 13px;
-    font-weight: 700;
-    padding: 10px;
-    border-radius: 12px;
-    border: 1px solid var(--line);
-    background: var(--card);
-  }
-  .gate-status.open   { color: var(--ok);  border-color: var(--ok); }
-  .gate-status.closed { color: var(--bad); border-color: #3a1f23; }
-  .gbox.active .v { color: var(--ok); }
-  .toast {
-    position: fixed;
-    bottom: 18px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--txt);
-    color: var(--bg);
-    padding: 8px 16px;
-    border-radius: 14px;
-    font-size: 12px;
-    font-weight: 700;
-    opacity: 0;
-    transition: opacity .25s;
-    z-index: 10;
-  }
-  .toast.show { opacity: 1; }
-  .seg-row { margin-top: 12px; }
-  .seg {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-    margin-top: 6px;
-  }
-  .seg button {
-    padding: 9px 6px;
-    font-size: 11px;
-    border-radius: 9px;
-  }
-  .seg button.active {
-    background: var(--txt);
-    color: var(--bg);
-    border-color: transparent;
-  }
-  .toggle-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-top: 4px;
-  }
-  .toggle-row .lbl { font-size: 14px; font-weight: 600; color: var(--txt); text-transform: none; letter-spacing: 0; }
-  .switch { position: relative; width: 50px; height: 30px; flex-shrink: 0; }
-  .switch input { opacity: 0; width: 0; height: 0; }
-  .slider {
-    position: absolute;
-    inset: 0;
-    cursor: pointer;
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: 30px;
-    transition: 0.2s;
-  }
-  .slider::before {
-    content: "";
-    position: absolute;
-    height: 22px;
-    width: 22px;
-    left: 3px;
-    top: 3px;
-    background: var(--txt);
-    border-radius: 50%;
-    transition: 0.2s;
-  }
-  .switch input:checked + .slider { background: var(--ok); border-color: transparent; }
-  .switch input:checked + .slider::before { transform: translateX(20px); background: #000; }
-  .model-badge {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .06em;
-    color: var(--accent);
-    border: 1px solid var(--accent);
-    border-radius: 8px;
-    padding: 2px 7px;
-  }
-  .iface-note.can-a { color: var(--accent); }
-  .iface-note.can-b { color: var(--ok); }
-  .bus-tag {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: .04em;
-    border-radius: 6px;
-    padding: 1px 5px;
-    margin-left: 6px;
-    vertical-align: middle;
-  }
-  .bus-tag.a { color: var(--accent); border: 1px solid var(--accent); }
-  .bus-tag.b { color: var(--ok); border: 1px solid var(--ok); }
+:root{--bg:#f2f2f0;--card:#fff;--ink:#171717;--muted:#777;--line:#dededb;--green:#2b8a55;--amber:#b27a19;--red:#c9403a;--shadow:0 8px 30px rgba(0,0,0,.07)}
+@media(prefers-color-scheme:dark){:root{--bg:#151515;--card:#202020;--ink:#f2f2f2;--muted:#999;--line:#343434;--shadow:none}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif}button,input{font:inherit}button{cursor:pointer}.wrap{max-width:520px;margin:auto;min-height:100vh;padding:calc(12px + env(safe-area-inset-top)) 14px calc(26px + env(safe-area-inset-bottom))}.top{height:48px;display:flex;align-items:center;justify-content:space-between}.logo{font-size:15px;font-weight:700;letter-spacing:-.02em}.live{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted)}.live:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--red)}.live.ok:before{background:var(--green)}
+.drive{padding:24px 8px 18px;text-align:center}.small{font-size:10px;color:var(--muted);font-weight:650;letter-spacing:.06em}.mode{font-size:46px;line-height:1.03;font-weight:510;letter-spacing:-.055em;margin:8px 0 20px}.mode.good{color:var(--green)}.mode.warn{color:var(--amber)}.mode.bad{color:var(--red)}.mode.compact{font-size:30px;letter-spacing:-.04em}
+.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}.metric{background:var(--card);padding:14px 7px;text-align:center}.metric .k{font-size:9px;color:var(--muted);font-weight:650}.metric .v{font-size:17px;margin-top:5px;font-weight:580;letter-spacing:-.03em}.good{color:var(--green)!important}.warn{color:var(--amber)!important}.bad{color:var(--red)!important}
+.quick{margin-top:14px;background:var(--card);border-radius:20px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}.qrow{min-height:60px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}.qrow+.qrow{border-top:1px solid var(--line)}.ql{display:flex;align-items:center;gap:12px;min-width:0}.ico{width:28px;height:28px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex:0 0 auto}.qt{font-size:14px;font-weight:560}.qs{font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}.rightctl{display:flex;align-items:center;gap:9px;min-width:0}.prio{font-size:9.5px;font-weight:680;color:var(--green);white-space:nowrap;text-align:right}.prio b{display:block;font-size:7.5px;color:var(--muted);font-weight:620;margin-bottom:2px;letter-spacing:.05em}.toggle{position:relative;width:43px;height:25px;flex:0 0 auto}.toggle input{display:none}.track{position:absolute;inset:0;border-radius:99px;background:#b8b8b3;transition:.18s}.track:after{content:"";position:absolute;width:19px;height:19px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.25)}.toggle input:checked+.track{background:var(--green)}.toggle input:checked+.track:after{transform:translateX(18px)}
+.gatecard{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px;box-shadow:var(--shadow)}.gatehead{display:flex;align-items:center;justify-content:space-between;gap:12px}.gatetitle{font-size:13px;font-weight:590}.gatepill{border:1px solid var(--green);color:var(--green);border-radius:999px;padding:7px 11px;font-size:11px;font-weight:700;white-space:nowrap}.gatepill.closed{border-color:var(--muted);color:var(--muted)}.gategrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:12px}.gateitem{background:var(--card);padding:11px 5px;text-align:center}.gk{font-size:8px;color:var(--muted);font-weight:650;letter-spacing:.04em}.gv{font-size:11px;margin-top:4px;font-weight:650;white-space:nowrap}
+.canline{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}.can{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}.canTop{display:flex;align-items:center;justify-content:space-between}.canName{font-size:12px;font-weight:590}.badge{font-size:9px;color:var(--green);font-weight:700}.canVal{font-size:22px;margin-top:10px;font-weight:520;letter-spacing:-.04em}.canSub{font-size:9px;color:var(--muted);margin-top:4px}
+.drawer{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}details+details{border-top:1px solid var(--line)}summary{list-style:none;cursor:pointer;padding:17px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:570}summary::-webkit-details-marker{display:none}.arrow{font-size:15px;color:var(--muted);transition:.18s}details[open] .arrow{transform:rotate(90deg)}.body{padding:0 16px 15px}.r{display:flex;justify-content:space-between;gap:16px;padding:10px 0;font-size:11px;border-top:1px solid var(--line)}.rk{color:var(--muted)}.rv{text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.subhead{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.08em;margin:13px 0 7px}.controlgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:6px}.btn{border:0;border-radius:13px;padding:12px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:600}.btn.primary{background:var(--ink);color:var(--bg)}.btn.danger{color:var(--red)}.fieldgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field{background:var(--bg);border-radius:13px;padding:9px 10px}.field label{display:block;font-size:8px;color:var(--muted);font-weight:650;margin-bottom:5px}.field input{width:100%;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}.field.full{grid-column:1/-1}.torqueRows{display:grid;gap:5px}.torqueRow{display:grid;grid-template-columns:28px 1fr 1fr 60px;gap:6px;align-items:center}.torqueRow input{width:100%;border:0;border-radius:10px;background:var(--bg);color:var(--ink);padding:8px;font-size:11px}.torqueRow span{font-size:10px;text-align:right}.ota{margin-top:8px}.ota input[type=file]{width:100%;font-size:10px;color:var(--muted);margin:6px 0 8px}.progress{height:4px;background:var(--line);border-radius:99px;overflow:hidden;display:none}.progress.show{display:block}.progress>i{display:block;height:100%;width:0;background:var(--green)}.otaMsg{font-size:9px;color:var(--muted);margin-top:7px}.linkbtn{display:flex;align-items:center;justify-content:center;text-decoration:none}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#111;color:#fff;padding:10px 14px;border-radius:999px;font-size:11px;opacity:0;pointer-events:none;transition:.2s;z-index:20}.toast.show{opacity:.94;transform:translate(-50%,0)}.bottom{text-align:center;margin-top:18px;font-size:9px;color:var(--muted)}
+@media(max-width:380px){.mode{font-size:40px}.mode.compact{font-size:27px}.qrow{padding:0 13px}.qs{max-width:140px;overflow:hidden;text-overflow:ellipsis}.prio{font-size:8.5px}.gategrid{grid-template-columns:1fr 1fr}.canline{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
-<header>
-  <h1>T2CAN Nag-killer & EU unlock <span class="model-badge">Model YL</span></h1>
-  <span class="pill" id="conn">connecting…</span>
-</header>
-<div class="tabs">
-  <button class="tab-btn active" onclick="showTab('nag',this)">Nag Killer</button>
-  <button class="tab-btn" onclick="showTab('eap',this)">Advanced EAP</button>
-  <button class="tab-btn" onclick="showTab('summon',this)">Summon Unlock</button>
-  <button class="tab-btn" onclick="showTab('fw',this)">Firmware</button>
-</div>
+<div class="wrap">
+  <div class="top"><div class="logo">MODEL YL UNLOCK</div><div class="live" id="conn">Connecting</div></div>
 
-<!-- NAG ECHO TAB -->
-<main id="main-nag" class="active">
-
-  <section class="panel">
-    <h2>Mode <span class="iface-note">CAN A — MCP2515</span></h2>
-    <div class="tbar" style="margin-top:0">
-      <button id="modeA" class="primary">A — Simple</button>
-      <button id="modeB">B — TSL6P (burst/pause)</button>
-      <button id="modeR" class="danger" style="margin-left:auto">Reset</button>
-    </div>
-    <div class="desc">
-      <b>A</b>: CAN 0x370, fixed +1.80 Nm, handsOn=1 always.<br>
-      <b>B</b>: Configurable target CAN ID, default 0x370, torque cycle, time-bursty (<span id="lbl_burst">1000</span> ms inject / <span id="lbl_pause">1500</span> ms rest).
+  <section class="drive">
+    <div class="small">AUTOPILOT</div>
+    <div class="mode" id="apMode">—</div>
+    <div class="metrics">
+      <div class="metric"><div class="k">TORQUE</div><div class="v" id="torque">—</div></div>
+      <div class="metric"><div class="k">NAG</div><div class="v" id="nagState">—</div></div>
+      <div class="metric"><div class="k">BLINKER</div><div class="v" id="blinkerState">—</div></div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Live</h2>
-    <div class="row">
-      <div class="stat"><div class="k">Enabled</div><div class="v" id="s_en">—</div></div>
-      <div class="stat"><div class="k">Rx frames</div><div class="v" id="s_rx">0</div></div>
-      <div class="stat"><div class="k">Echo sent</div><div class="v" id="s_echo">0</div></div>
-      <div class="stat"><div class="k">Tx ok / fail</div><div class="v" id="s_tx">0/0</div></div>
-      <div class="stat"><div class="k">Last latency</div><div class="v" id="s_lat">—</div></div>
-      <div class="stat"><div class="k">HandsOn (real)</div><div class="v" id="s_ho">—</div></div>
-      <div class="stat"><div class="k">Torque (real)</div><div class="v" id="s_tq">—</div></div>
-      <div class="stat"><div class="k">Last injected</div><div class="v" id="s_inj">—</div></div>
-      <div class="stat"><div class="k">CAN A state</div><div class="v" id="s_cs">—</div></div>
-      <div class="stat full"><div class="k">Uptime</div><div class="v" id="s_up">—</div></div>
-    </div>
-    <div class="tbar">
-      <button id="toggle" disabled>Disable</button>
+  <section class="quick">
+    <div class="qrow"><div class="ql"><div class="ico">N</div><div><div class="qt">Nag Killer</div><div class="qs" id="nagModeSub">Mode —</div></div></div><label class="toggle"><input id="nagToggle" type="checkbox"><span class="track"></span></label></div>
+    <div class="qrow"><div class="ql"><div class="ico">↔</div><div><div class="qt">Auto Blinker</div><div class="qs" id="blinkSub">NOA only</div></div></div><label class="toggle"><input id="blinkToggle" type="checkbox"><span class="track"></span></label></div>
+    <div class="qrow"><div class="ql"><div class="ico">S</div><div><div class="qt">EU Unlock</div><div class="qs">Summon TX Priority</div></div></div><div class="rightctl"><div class="prio"><b>PRIORITY</b><span id="priorityState">—</span></div><label class="toggle"><input id="summonToggle" type="checkbox"><span class="track"></span></label></div></div>
+    <div class="qrow"><div class="ql"><div class="ico">T</div><div><div class="qt">TLSSC</div><div class="qs">AP active only</div></div></div><label class="toggle"><input id="tlsscToggle" type="checkbox"><span class="track"></span></label></div>
+  </section>
+
+  <section class="gatecard">
+    <div class="gatehead"><div class="gatetitle">SUMMON GATE</div><div class="gatepill closed" id="gatePill">CLOSED</div></div>
+    <div class="gategrid">
+      <div class="gateitem"><div class="gk">PARKED</div><div class="gv" id="gPark">OFF</div></div>
+      <div class="gateitem"><div class="gk">SUMMONING</div><div class="gv" id="gSummon">OFF</div></div>
+      <div class="gateitem"><div class="gk">ACA</div><div class="gv" id="gAca">INACTIVE</div></div>
+      <div class="gateitem"><div class="gk">SPR</div><div class="gv" id="gSpr">NOT SEEN</div></div>
     </div>
   </section>
 
-  <section class="panel">
-    <h2>Advanced — runtime overrides</h2>
-    <div class="row row3">
-      <label>Target CAN ID (hex)
-        <input type="text" id="f_id" placeholder="0x370">
-      </label>
-      <label>AP state ID (hex)
-        <input type="text" id="f_apId" placeholder="0x399">
-      </label>
-      <label>Steering ID (hex)
-        <input type="text" id="f_stId" placeholder="0x129">
-      </label>
-    </div>
-    <div class="row row3" style="margin-top:10px">
-      <label>Burst (ms, mode B)
-        <input type="number" id="f_burst" min="50" max="10000" step="50">
-      </label>
-      <label>Pause (ms, mode B)
-        <input type="number" id="f_pause" min="0" max="10000" step="50">
-      </label>
-      <label>HandsOn=1 rate (%)
-        <input type="number" id="f_ho" min="0" max="100" step="1">
-      </label>
-    </div>
+  <div class="canline">
+    <section class="can"><div class="canTop"><div class="canName">CAN A</div><div class="badge" id="canABadge">—</div></div><div class="canVal">Party</div><div class="canSub">MCP2515</div></section>
+    <section class="can"><div class="canTop"><div class="canName">CAN B</div><div class="badge" id="canBBadge">—</div></div><div class="canVal">VH</div><div class="canSub">TWAI</div></section>
+  </div>
+
+  <section class="drawer">
     <details>
-      <summary>Torque table (used by modes A/B)</summary>
-      <table>
-        <thead><tr><th>#</th><th>byte2 (hex)</th><th>byte3 (hex)</th><th>Nm</th></tr></thead>
-        <tbody id="tq_tbody"></tbody>
-      </table>
-      <div class="tbar">
-        <button id="tq_add">+ row</button>
-        <button id="tq_del">− row</button>
+      <summary><span>Live details</span><span class="arrow">›</span></summary>
+      <div class="body">
+        <div class="r"><span class="rk">HandsOn real</span><span class="rv" id="liveHo">—</span></div>
+        <div class="r"><span class="rk">Last injected</span><span class="rv" id="liveInj">—</span></div>
+        <div class="r"><span class="rk">0x370 RX</span><span class="rv" id="live370">—</span></div>
+        <div class="r"><span class="rk">0x249 RX</span><span class="rv" id="live249">—</span></div>
+        <div class="r"><span class="rk">NAG TX OK / FAIL</span><span class="rv" id="liveNagTx">—</span></div>
+        <div class="r"><span class="rk">Summon TX OK / FAIL</span><span class="rv" id="liveSumTx">—</span></div>
       </div>
     </details>
-    <div class="tbar" style="margin-top:14px">
-      <button id="apply" class="primary" style="margin-left:auto" disabled>Apply all overrides</button>
-    </div>
-    <div class="desc">Hard cap: torque clamped to ±1.80 Nm in firmware.</div>
-  </section>
-</main>
 
-
-<!-- ADVANCED EAP TAB -->
-<main id="main-eap">
-  <section class="panel">
-    <h2>Auto Blinker <span class="iface-note can-b">CAN B — TWAI</span></h2>
-    <div class="toggle-row">
-      <span class="lbl">Enable auto blinker</span>
-      <label class="switch" style="margin:0">
-        <input type="checkbox" id="blinkAToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="desc">
-      Direction source: <b>DAS_behaviorType</b> on <b>0x24A / DAS_visualDebug</b>.<br>
-      <b>2 = LANE_CHANGE_LEFT</b> and <b>3 = LANE_CHANGE_RIGHT</b>.<br>
-      The trigger is delayed before sending <b>SCCM_turnIndicatorStalkStatus</b> on <b>0x249</b> through CAN B.
-      One event generates one soft pulse with the native three-blink behavior.
-    </div>
-    <div class="row" style="margin-top:12px;align-items:flex-end;">
-      <div style="flex:1">
-        <div class="k" style="margin-bottom:6px">Delay before trigger (ms) · 0–30000</div>
-        <input type="number" id="blkA_delay_in" min="0" max="30000" step="100" value="3000" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid #2a3550;background:#0e1524;color:#e8eefc;font-size:15px;">
+    <details>
+      <summary><span>NAG settings</span><span class="arrow">›</span></summary>
+      <div class="body">
+        <div class="controlgrid"><button class="btn" id="modeA">Mode A</button><button class="btn" id="modeB">Burst / Pause</button></div>
+        <div class="fieldgrid" style="margin-top:8px">
+          <div class="field"><label>HANDSON RATE %</label><input id="nagHo" inputmode="numeric"></div>
+          <div class="field"><label>BURST MS</label><input id="nagBurst" inputmode="numeric"></div>
+          <div class="field"><label>PAUSE MS</label><input id="nagPause" inputmode="numeric"></div>
+          <div class="field"><label>TARGET ID</label><input id="nagTarget"></div>
+          <div class="field"><label>AP STATE ID</label><input id="nagApId"></div>
+          <div class="field"><label>STEERING ID</label><input id="nagSteerId"></div>
+        </div>
+        <div class="subhead">TORQUE PROFILE</div><div class="torqueRows" id="torqueRows"></div>
+        <div class="controlgrid"><button class="btn" id="torqueAdd">Add Torque</button><button class="btn" id="torqueDel">Remove</button><button class="btn primary" id="nagApply">Apply</button><button class="btn danger" id="nagReset">Reset Mode A</button></div>
       </div>
-      <button class="primary" id="blkA_delay_apply" style="width:120px">Apply</button>
-    </div>
-    <div class="row" style="margin-top:12px">
-      <div class="stat"><div class="k">Auto armed</div><div class="v" id="blkA_armed">—</div></div>
-      <div class="stat"><div class="k">Countdown</div><div class="v" id="blkA_remain">—</div></div>
-      <div class="stat"><div class="k">Autopilot active</div><div class="v" id="blkA_ap">—</div></div>
-      <div class="stat"><div class="k">Force Mode</div><div class="v" id="blkA_fm">—</div></div>
-      <div class="stat"><div class="k">Active turn</div><div class="v" id="blkA_turn">—</div></div>
-      <div class="stat"><div class="k">TX ok / fail</div><div class="v" id="blkA_tx">0/0</div></div>
-      <div class="stat full"><div class="k">CAN B state</div><div class="v" id="blkA_cs">—</div></div>
-    </div>
-  </section>
+    </details>
 
-  <section class="panel">
-    <h2>SCCM Diagnostics <span class="iface-note can-b">0x249 — CAN B</span></h2>
-    <div class="row">
-      <div class="stat"><div class="k">Seen on bus</div><div class="v" id="blkA_seen">—</div></div>
-      <div class="stat"><div class="k">RX count</div><div class="v" id="blkA_rx249">—</div></div>
-      <div class="stat"><div class="k">Checksum self-test</div><div class="v" id="blkA_st">—</div></div>
-      <div class="stat"><div class="k">Real counter</div><div class="v" id="blkA_rcnt">—</div></div>
-      <div class="stat"><div class="k">Real turn</div><div class="v" id="blkA_rturn">—</div></div>
-      <div class="stat"><div class="k">Real checksum</div><div class="v" id="blkA_rck">—</div></div>
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>ULC Configuration Injection <span class="iface-note can-b">0x3F8 — CAN B</span></h2>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcBlindSpotConfig</span>
-      <div class="seg" id="ulcBlindSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
+    <details>
+      <summary><span>Auto Blinker</span><span class="arrow">›</span></summary>
+      <div class="body">
+        <div class="fieldgrid"><div class="field full"><label>DELAY BEFORE TRIGGER (S)</label><input id="blinkDelay" type="number" min="0" max="30" step="0.1" inputmode="decimal"></div></div>
+        <button class="btn primary" id="blinkApply" style="width:100%;margin-top:8px">Apply Delay</button>
+        <div class="r"><span class="rk">Gate</span><span class="rv" id="blinkGate">—</span></div>
+        <div class="r"><span class="rk">Auto armed</span><span class="rv" id="blinkArmed">—</span></div>
+        <div class="r"><span class="rk">Countdown</span><span class="rv" id="blinkRemain">—</span></div>
+        <div class="r"><span class="rk">Behavior</span><span class="rv" id="blinkBehavior">—</span></div>
+        <div class="r"><span class="rk">Active turn</span><span class="rv" id="blinkTurn">—</span></div>
+        <div class="r"><span class="rk">0x24A RX</span><span class="rv" id="blink24a">—</span></div>
+        <div class="r"><span class="rk">0x249 checksum</span><span class="rv" id="blinkCk">—</span></div>
+        <div class="r"><span class="rk">0x249 raw</span><span class="rv" id="blinkRaw">—</span></div>
       </div>
-    </div>
-    <div class="seg-row">
-      <span class="lbl">UI_ulcSpeedConfig</span>
-      <div class="seg" id="ulcSpeedSeg">
-        <button data-value="0">STANDARD</button>
-        <button data-value="1">AGGRESSIVE</button>
-        <button data-value="2">MAD_MAX</button>
+    </details>
+
+    <details>
+      <summary><span>Summon transport</span><span class="arrow">›</span></summary>
+      <div class="body">
+        <div class="r"><span class="rk">Priority state</span><span class="rv" id="sumPriorityDetail">—</span></div>
+        <div class="r"><span class="rk">Fresh parked</span><span class="rv" id="sumFreshPark">—</span></div>
+        <div class="r"><span class="rk">TX queue now / max</span><span class="rv" id="sumTxQueue">—</span></div>
+        <div class="r"><span class="rk">Non-Summon shed</span><span class="rv" id="sumShed">—</span></div>
+        <div class="r"><span class="rk">Queue flush</span><span class="rv" id="sumFlush">—</span></div>
+        <div class="r"><span class="rk">Full enter / exit</span><span class="rv" id="sumFull">—</span></div>
+        <div class="r"><span class="rk">RX 0x118 / 0x186 / 0x399 / 0x3F8</span><span class="rv" id="sumRxIds">—</span></div>
       </div>
-    </div>
-    <div class="desc">
-      Selected values are injected into incoming <b>0x3F8 / UI_driverAssistControl</b> frames while the injection gate is open.
-    </div>
-  </section>
-</main>
+    </details>
 
-<!-- SUMMON UNLOCK TAB -->
-<main id="main-summon">
-  <section class="panel">
-    <h2>Summon Unlock <span class="iface-note can-b">inject CAN B — TWAI (1021)</span></h2>
-    <div class="stat full" style="min-height:auto;padding:16px 14px;">
-      <div class="k">State</div>
-      <div class="big-state off" id="sum_big">—</div>
-    </div>
-    <div class="tbar">
-      <button class="primary" onclick="postSummon('/api/summon/enable')">Enable</button>
-      <button class="danger" onclick="postSummon('/api/summon/disable')">Disable</button>
-      <button class="warn" id="btnForceMode">AP injection</button>
-    </div>
+    <details>
+      <summary><span>System</span><span class="arrow">›</span></summary>
+      <div class="body">
+        <div class="r"><span class="rk">Firmware</span><span class="rv" id="sysFw">—</span></div>
+        <div class="r"><span class="rk">Uptime</span><span class="rv" id="sysUptime">—</span></div>
+        <div class="r"><span class="rk">Free heap</span><span class="rv" id="sysHeap">—</span></div>
+        <div class="r"><span class="rk">Hard Reinitialize</span><span class="rv" id="sysReinit">—</span></div>
+        <div class="r"><span class="rk">Last hard reason</span><span class="rv" id="sysReason">—</span></div>
+        <div class="controlgrid">
+          <button class="btn" id="btnResetStats">Reset Stats</button>
+          <button class="btn" id="btnReinit">Hard Reinitialize</button>
+          <a class="btn linkbtn" href="/api/system/boot-capture.csv">Boot Capture CSV</a>
+          <button class="btn danger" id="btnReboot">Reboot T-2CAN</button>
+        </div>
+        <div class="subhead">FIRMWARE UPDATE</div>
+        <div class="ota"><input id="otaFile" type="file" accept=".bin,application/octet-stream"><button class="btn primary" id="otaUpload" style="width:100%">Upload Firmware</button><div class="progress" id="otaProgress"><i id="otaBar"></i></div><div class="otaMsg" id="otaMsg"></div></div>
+      </div>
+    </details>
   </section>
-
-  <section class="panel">
-    <h2>Traffic Light &amp; Stop Sign Control <span class="iface-note">CAN B — TWAI</span></h2>
-    <div class="toggle-row">
-      <span class="lbl">Enable TLSSC</span>
-      <label class="switch" style="margin:0">
-        <input type="checkbox" id="tlsscToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="desc">
-      Injects <b>UI_fsdStopsControlEnabled = 1</b> on <b>0x3FD</b> mux0 bit38.<br>
-	  and <b>UI_fsdContinueOnGreenWithCIPV = 1</b> on <b>0x3FD</b> mux0 bit39.<br>
-      Off by default. Applied only while the injection gate is open.
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Injection Gate</h2>
-    <div class="gate-status" id="sum_gate_status">—</div>
-    <div class="row" style="margin-top:12px">
-      <div class="stat" id="sum_g_pk"><div class="k">Parked</div><div class="v" id="sum_g_pk_v">—</div></div>
-      <div class="stat" id="sum_g_su"><div class="k">Summoning</div><div class="v" id="sum_g_su_v">—</div></div>
-      <div class="stat"><div class="k">ACA</div><div class="v" id="sum_d_aca">—</div></div>
-      <div class="stat"><div class="k">SPR</div><div class="v" id="sum_d_spr">—</div></div>
-    </div>
-    <div class="desc">
-      Gate open if Parked OR Summoning only.<br>
-      APActive : <span id="sum_g_ap_v" style="font-weight:600">—</span> (info only, doesn't start injection).
-    </div>
-  </section>
-
-  <section class="panel">
-    <h2>Frames CAN <span class="iface-note">Model YL routing</span></h2>
-    <div class="desc" style="margin-top:0;margin-bottom:12px">
-      <span class="bus-tag a">CAN A</span> status 280 / 390 / 921 read on MCP2515 (same CAN A bus as the Nag Killer).<br>
-      <span class="bus-tag b">CAN B</span> 1016 (SPR) + 1021 injection on TWAI.
-    </div>
-    <div class="row">
-      <div class="stat"><div class="k">280 (gear/ACA) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_280">—</div></div>
-      <div class="stat"><div class="k">390 (DIF gear) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_390">—</div></div>
-      <div class="stat"><div class="k">921 (AP status) <span class="bus-tag a">A</span></div><div class="v" id="sum_s_921">—</div></div>
-      <div class="stat"><div class="k">1016 (SPR) <span class="bus-tag b">B</span></div><div class="v" id="sum_s_1016">—</div></div>
-      <div class="stat"><div class="k">1021 mux1 rx <span class="bus-tag b">B</span></div><div class="v" id="sum_s_rx">—</div></div>
-      <div class="stat"><div class="k">TX ok <span class="bus-tag b">B</span></div><div class="v ok" id="sum_s_ok">—</div></div>
-      <div class="stat"><div class="k">TX fail <span class="bus-tag b">B</span></div><div class="v" id="sum_s_fail">—</div></div>
-      <div class="stat"><div class="k">CAN B state</div><div class="v" id="sum_s_can">—</div></div>
-      <div class="stat full"><div class="k">Uptime</div><div class="v" id="sum_s_up">—</div></div>
-    </div>
-  
-  <section class="panel">
-    <h2>TLSSC Restore Banned car Only<span class="iface-note can-b">CAN B — TWAI</span></h2>
-    <div class="toggle-row">
-      <span class="lbl">TLSSC Restore</span>
-      <label class="switch" style="margin:0">
-        <input type="checkbox" id="tlsscRestoreToggle">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="desc">
-      Forces the low 6 bits of byte 0 on <b>0x331</b> to <b>0x1B</b>.
-      Disabled by default. Applied only while the injection gate is open.
-    </div>
-  </section>
-</main>
-
-<!-- FIRMWARE / OTA TAB -->
-<main id="main-fw">
-  <section class="panel">
-    <h2>Firmware / OTA Update</h2>
-    <div class="row" style="margin-bottom:12px;">
-      <div class="stat"><div class="k">Version</div><div class="v" id="fw_ver">—</div></div>
-      <div class="stat"><div class="k">Free heap</div><div class="v" id="fw_free">—</div></div>
-      <div class="stat"><div class="k">MCP2515 (CAN A) — nag + summon status</div><div class="v" id="fw_mcp">—</div></div>
-      <div class="stat"><div class="k">TWAI (CAN B) — summon inject 1021</div><div class="v" id="fw_twai">—</div></div>
-      <div class="stat full"><div class="k">Boot count</div><div class="v" id="fw_boot">—</div></div>
-    </div>
-    <input type="file" id="otaFile" accept=".bin">
-    <div class="tbar">
-      <button class="primary" id="btnOtaUpload" onclick="uploadOta()">Upload &amp; Flash</button>
-    </div>
-    <div class="progress" id="otaProgressWrap">
-      <div class="progress-bar" id="otaProgressBar"></div>
-    </div>
-    <div class="ota-msg" id="otaMsg">Select a compiled .bin firmware file, then upload. The device reboots automatically after a successful flash.</div>
-  </section>
-</main>
-
-<div class="footer">
-  T2CAN Unified ·
-  <a href="/api/nag/config" target="_blank">/api/nag/config</a> ·
-  <a href="/api/nag/stats" target="_blank">/api/nag/stats</a> ·
-  <a href="/api/summon/stats" target="_blank">/api/summon/stats</a> ·
-  <a href="/api/system/stats" target="_blank">/api/system/stats</a><br>
-  research / educational only · not for use on public roads
+  <div class="bottom">MODEL YL UNLOCK</div>
 </div>
-<div class="toast" id="toast">saved</div>
-
+<div class="toast" id="toast"></div>
 <script>
-const $ = id => document.getElementById(id);
-let otaUploading = false;
+const $=id=>document.getElementById(id);let nagCfg=null,otaUploading=false,lastOk=0,lastBlink=null,lastNag=null,lastSum=null,lastSys=null,lastDas=null;
+function ok(){lastOk=Date.now();$('conn').textContent='Connected';$('conn').className='live ok'}function toast(t){const x=$('toast');x.textContent=t;x.classList.add('show');clearTimeout(toast.h);toast.h=setTimeout(()=>x.classList.remove('show'),1500)}
+setInterval(()=>{if(Date.now()-lastOk>2500){$('conn').textContent='Disconnected';$('conn').className='live'}},700);
+function fmtUptime(s){s=Number(s)||0;const h=Math.floor(s/3600),m=Math.floor((s%3600)/60),ss=s%60;return h?`${h}h ${m}m ${ss}s`:m?`${m}m ${ss}s`:`${ss}s`}
+function modeInfo(ds,noa){switch(Number(ds)){case 0:case 1:case 2:return['OFF',''];case 3:return['AUTOSTEER','good'];case 4:return['AUTOSTEER · RESTRICTED','warn compact'];case 5:return[noa?'NOA':'NOA · STALE',noa?'good':'warn'];case 6:return['FSD','good'];case 8:return['ABORTING','warn'];case 9:return['ABORTED','warn'];case 14:return['FAULT','bad'];case 15:return['SNA','warn'];default:return['STATE '+ds,'warn']}}
+const TURN={0:'IDLE',2:'RIGHT',4:'UP_2',6:'LEFT',7:'LEFT legacy',8:'DOWN_2'};
+async function jget(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(r.status);ok();return r.json()}async function post(url){const r=await fetch(url,{method:'POST'});if(!r.ok&&!([202].includes(r.status)))throw Error(r.status);ok();return r}
 
-function showTab(tab, btn) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('main').forEach(m => m.classList.remove('active'));
-  btn.classList.add('active');
-  $('main-' + tab).classList.add('active');
-}
+async function loadNag(){try{nagCfg=await jget('/api/nag/config');renderNagCfg()}catch(e){}}
+function renderNagCfg(){if(!nagCfg)return;$('nagToggle').checked=!!nagCfg.enabled;$('nagModeSub').textContent=nagCfg.mode===1?'Burst / Pause':'Mode A';$('modeA').classList.toggle('primary',nagCfg.mode===0);$('modeB').classList.toggle('primary',nagCfg.mode===1);$('nagHo').value=nagCfg.hoRatePct;$('nagBurst').value=nagCfg.burstMs;$('nagPause').value=nagCfg.pauseMs;$('nagTarget').value='0x'+Number(nagCfg.targetId).toString(16).toUpperCase();$('nagApId').value='0x'+Number(nagCfg.apStateId).toString(16).toUpperCase();$('nagSteerId').value='0x'+Number(nagCfg.steeringId).toString(16).toUpperCase();renderTorque()}
+function nm(b2,b3){return((((b2&15)<<8)|(b3&255))*.01-20.5)}function renderTorque(){const w=$('torqueRows');w.innerHTML='';(nagCfg?.torque||[]).forEach((t,i)=>{const r=document.createElement('div');r.className='torqueRow';r.innerHTML=`<span>${i}</span><input data-i="${i}" data-k="b2" value="0x${Number(t.b2).toString(16).padStart(2,'0').toUpperCase()}"><input data-i="${i}" data-k="b3" value="0x${Number(t.b3).toString(16).padStart(2,'0').toUpperCase()}"><span id="tnm${i}">${nm(t.b2,t.b3).toFixed(2)} Nm</span>`;w.appendChild(r)});w.querySelectorAll('input').forEach(x=>x.oninput=e=>{const i=+e.target.dataset.i,k=e.target.dataset.k,v=parseInt(e.target.value,0);if(Number.isFinite(v)&&nagCfg?.torque?.[i]){nagCfg.torque[i][k]=v&255;$('tnm'+i).textContent=nm(nagCfg.torque[i].b2,nagCfg.torque[i].b3).toFixed(2)+' Nm'}})}
+async function fetchNag(){try{const s=lastNag=await jget('/api/nag/stats');$('torque').textContent=(s.torque>=0?'+':'')+Number(s.torque).toFixed(2)+' Nm';$('liveHo').textContent=s.ho;$('liveInj').textContent=(s.injNm>=0?'+':'')+Number(s.injNm).toFixed(2)+' Nm · ho '+s.injHo;$('live370').textContent=s.rx;$('liveNagTx').textContent=s.txOk+' / '+s.txFail;const enabled=!!nagCfg?.enabled;$('nagState').textContent=!enabled?'OFF':s.apActive?'ACTIVE':'STANDBY';$('nagState').className='v '+(enabled&&s.apActive?'good':'');const st=['READY','RUNNING','BUS OFF','ERROR'][s.canAState]||String(s.canAState);$('canABadge').textContent=st;$('canABadge').className='badge '+((s.canAState===0||s.canAState===1)?'good':'bad')}catch(e){}}
+async function fetchBlink(){try{const s=lastBlink=await jget('/api/blinkA/stats');const [m,c]=modeInfo(s.dasState,s.noaActive);$('apMode').textContent=m;$('apMode').className='mode '+c;$('blinkToggle').checked=!!s.enabled;$('blinkSub').textContent='NOA only · '+(Number(s.delayMs)/1000).toFixed(1)+' s';$('blinkerState').textContent=!s.enabled?'OFF':s.noaActive?'READY':'STANDBY';$('blinkerState').className='v '+(s.enabled&&s.noaActive?'good':'');$('blinkDelay').value=(Number(s.delayMs)/1000).toFixed(1);$('blinkGate').textContent=s.noaActive?'NOA · FRESH':(s.noaRawActive?'NOA · STALE':'BLOCKED');$('blinkArmed').textContent=s.autoArmed?'ARMED':'IDLE';$('blinkRemain').textContent=s.autoArmed?s.autoRemainMs+' ms':'—';$('blinkBehavior').textContent=s.behaviorType;$('blinkTurn').textContent=TURN[s.activeTurn]??s.activeTurn;$('live249').textContent=s.rx249;$('blinkCk').textContent=!s.seen249?'—':(s.cksumSelfTest?'OK':'MISMATCH');$('blinkRaw').textContent=s.realRaw||'—'}catch(e){}}
+async function fetchDas(){try{const s=lastDas=await jget('/api/das/stats');$('blink24a').textContent=s.visualDebugRx}catch(e){}}
+async function fetchSum(){try{const s=lastSum=await jget('/api/summon/stats');$('summonToggle').checked=!!s.enabled;$('tlsscToggle').checked=!!s.tlssc;$('priorityState').textContent=s.priorityStateName||s.priorityState;$('sumPriorityDetail').textContent=s.priorityStateName||s.priorityState;$('sumFreshPark').textContent=s.priorityFreshParked?'YES':'NO';$('sumTxQueue').textContent=s.txQueueNow+' / '+s.txQueueMax;$('sumShed').textContent=s.nonSummonShed+' · S '+s.standbyShed+' · F '+s.fullShed;$('sumFlush').textContent=s.summonQueueFlush;$('sumFull').textContent=s.priorityFullEnter+' / '+s.priorityFullExit;$('sumRxIds').textContent=[s.rx280,s.rx390,s.rx921,s.rx1016].join(' / ');$('liveSumTx').textContent=s.txOk+' / '+s.txFail;const gp=$('gatePill');gp.textContent=s.gate?'OPEN':'CLOSED';gp.className='gatepill '+(s.gate?'':'closed');[['gPark',s.parked,'ON','OFF'],['gSummon',s.summon,'ON','OFF'],['gAca',s.aca,'ACTIVE','INACTIVE'],['gSpr',s.spr,'SEEN','NOT SEEN']].forEach(([id,v,a,b])=>{const e=$(id);e.textContent=v?a:b;e.className='gv '+(v?'good':'')});const bState=s.canStateName||['STOPPED','RUNNING','BUS OFF','RECOVERING'][s.canState]||String(s.canState);$('canBBadge').textContent=bState;$('canBBadge').className='badge '+(s.canState===1?'good':s.canState===2?'bad':'warn')}catch(e){}}
+async function fetchSys(){try{const s=lastSys=await jget('/api/system/stats');$('sysFw').textContent=s.fwVersion||'—';$('sysUptime').textContent=fmtUptime(s.uptimeS);$('sysHeap').textContent=Math.round((s.freeHeap||0)/1024)+' KB';$('sysReinit').textContent=s.canHardReinit+' / fail '+s.canHardReinitFail;$('sysReason').textContent=s.canLastHardReason;if(!lastNag){$('canABadge').textContent=s.mcpReady?'READY':'NOT READY'}if(!lastSum){$('canBBadge').textContent=s.twaiReady?'RUNNING':'NOT READY'}}catch(e){}}
 
-function showToast(msg) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(showToast._h);
-  showToast._h = setTimeout(() => t.classList.remove('show'), 1500);
-}
+$('nagToggle').onchange=async e=>{if(!nagCfg)return;try{nagCfg=await (await fetch('/api/nag/update?enabled='+(e.target.checked?'1':'0'),{method:'POST'})).json();ok();renderNagCfg();toast(e.target.checked?'Nag enabled':'Nag disabled')}catch(x){}};
+$('blinkToggle').onchange=async e=>{try{await post(e.target.checked?'/api/blinkA/enable':'/api/blinkA/disable');fetchBlink()}catch(x){}};
+$('summonToggle').onchange=async e=>{try{await post(e.target.checked?'/api/summon/enable':'/api/summon/disable');fetchSum()}catch(x){}};
+$('tlsscToggle').onchange=async e=>{try{await post(e.target.checked?'/api/summon/tlssc-enable':'/api/summon/tlssc-disable');fetchSum()}catch(x){}};
+$('modeA').onclick=()=>setMode(0);$('modeB').onclick=()=>setMode(1);async function setMode(m){try{nagCfg=await (await fetch('/api/nag/mode?m='+m,{method:'POST'})).json();ok();renderNagCfg();toast(m?'Burst / Pause':'Mode A')}catch(e){}}
+$('torqueAdd').onclick=()=>{if(!nagCfg)return;if(nagCfg.torque.length>=8)return toast('Max 8');nagCfg.torque.push({b2:0x08,b3:0xB6});renderTorque()};$('torqueDel').onclick=()=>{if(!nagCfg)return;if(nagCfg.torque.length<=1)return toast('Min 1');nagCfg.torque.pop();renderTorque()};
+$('nagApply').onclick=async()=>{if(!nagCfg)return;const p=new URLSearchParams({targetId:$('nagTarget').value,apStateId:$('nagApId').value,steeringId:$('nagSteerId').value,hoRatePct:$('nagHo').value,burstMs:$('nagBurst').value,pauseMs:$('nagPause').value,count:nagCfg.torque.length});nagCfg.torque.forEach((t,i)=>{p.set('b2_'+i,'0x'+Number(t.b2).toString(16));p.set('b3_'+i,'0x'+Number(t.b3).toString(16))});try{nagCfg=await (await fetch('/api/nag/update?'+p,{method:'POST'})).json();ok();renderNagCfg();toast('Applied')}catch(e){toast('Apply failed')}};
+$('nagReset').onclick=async()=>{if(!confirm('Reset NAG to Mode A defaults?'))return;try{nagCfg=await (await fetch('/api/nag/reset',{method:'POST'})).json();ok();renderNagCfg();toast('Reset')}catch(e){}};
+$('blinkApply').onclick=async()=>{let sec=parseFloat($('blinkDelay').value);if(!Number.isFinite(sec))sec=2.0;sec=Math.max(0,Math.min(30,sec));const v=Math.round(sec*1000);try{await post('/api/blinkA/delay?ms='+v);fetchBlink();toast('Delay '+(v/1000).toFixed(1)+' s')}catch(e){}};
+$('btnResetStats').onclick=async()=>{if(!confirm('Reset runtime diagnostic counters?'))return;try{await post('/api/system/reset-stats');toast('Stats reset')}catch(e){}};$('btnReinit').onclick=async()=>{if(!confirm('Hard reinitialize CAN A and CAN B?'))return;try{await post('/api/system/reinit-can');toast('Reinitialize requested')}catch(e){}};$('btnReboot').onclick=async()=>{if(!confirm('Reboot T-2CAN now?'))return;try{await post('/api/system/reboot')}catch(e){}toast('Rebooting…');setTimeout(()=>location.reload(),5000)};
+$('otaUpload').onclick=()=>{const f=$('otaFile').files[0],msg=$('otaMsg'),pr=$('otaProgress'),bar=$('otaBar');if(!f)return toast('Choose .bin file');const fd=new FormData();fd.append('update',f,f.name);const x=new XMLHttpRequest();otaUploading=true;pr.classList.add('show');msg.textContent='Uploading…';x.open('POST','/update',true);x.upload.onprogress=e=>{if(e.lengthComputable){const p=Math.round(e.loaded/e.total*100);bar.style.width=p+'%';msg.textContent='Uploading '+p+'%'}};x.onload=()=>{let good=x.status===200;try{good=good&&JSON.parse(x.responseText).ok}catch(e){}if(good){bar.style.width='100%';msg.textContent='Flash successful · rebooting';setTimeout(()=>location.reload(),6000)}else{msg.textContent='OTA failed';otaUploading=false}};x.onerror=()=>{msg.textContent='Upload error';otaUploading=false};x.send(fd)};
 
-
-// ===== ADVANCED EAP JS =====
-const BLINKA_CAN_STATES = ['ready','not ready'];
-const TURN_NAMES = {0:'IDLE',2:'UP_1',4:'UP_2',7:'DOWN_1',8:'DOWN_2'};
-
-function setUlcSegment(id, value) {
-  document.querySelectorAll('#' + id + ' button').forEach(b => {
-    b.classList.toggle('active', Number(b.dataset.value) === Number(value));
-  });
-}
-
-async function fetchEapStats() {
-  try {
-    const s = await fetch('/api/blinkA/stats', {cache:'no-store'}).then(r => r.json());
-
-    $('blkA_ap').textContent = s.apActive ? 'YES' : 'NO';
-    $('blkA_fm').textContent = s.forceMode ? 'YES' : 'NO';
-    $('blkA_turn').textContent = TURN_NAMES[s.activeTurn] ?? String(s.activeTurn);
-    $('blkA_tx').textContent = s.txOk + '/' + s.txFail;
-
-    $('blkA_cs').textContent = s.canBState ? 'READY' : 'NOT READY';
-    $('blkA_cs').className = 'v ' + (s.canBState ? 'ok' : 'bad');
-
-    const tg = $('blinkAToggle');
-    if (tg && document.activeElement !== tg) tg.checked = !!s.enabled;
-
-    $('blkA_delay_in').value = s.delayMs;
-    $('blkA_armed').textContent = s.autoArmed ? 'ARMED' : 'IDLE';
-    $('blkA_armed').className = 'v ' + (s.autoArmed ? 'warn' : '');
-    $('blkA_remain').textContent = s.autoArmed ? (s.autoRemainMs + ' ms') : '—';
-
-    $('blkA_seen').textContent = s.seen249 ? 'YES' : 'NO';
-    $('blkA_seen').className = 'v ' + (s.seen249 ? 'ok' : 'bad');
-    $('blkA_rx249').textContent = s.rx249;
-    $('blkA_rcnt').textContent = s.realCounter;
-    $('blkA_rturn').textContent = TURN_NAMES[s.realTurn] ?? String(s.realTurn);
-    $('blkA_rck').textContent = '0x' + Number(s.realCksum).toString(16).toUpperCase().padStart(2,'0');
-
-    const st = $('blkA_st');
-    st.textContent = s.seen249 ? (s.cksumSelfTest ? 'OK' : 'MISMATCH') : '—';
-    st.className = 'v ' + (s.seen249 ? (s.cksumSelfTest ? 'ok' : 'bad') : '');
-
-    const sum = await fetch('/api/summon/stats', {cache:'no-store'}).then(r => r.json());
-    setUlcSegment('ulcBlindSeg', sum.ulcBlind ?? 0);
-    setUlcSegment('ulcSpeedSeg', sum.ulcSpeed ?? 0);
-  } catch(e) {
-    // Keep the last known values.
-  }
-}
-
-async function postBlinkA(url) {
-  await fetch(url, {method:'POST'});
-  fetchEapStats();
-}
-
-$('blinkAToggle').addEventListener('change', e => {
-  postBlinkA(e.target.checked ? '/api/blinkA/enable' : '/api/blinkA/disable');
-  showToast(e.target.checked ? 'Auto blinker enabled' : 'Auto blinker disabled');
-});
-
-function applyBlinkADelay() {
-  let v = parseInt($('blkA_delay_in').value, 10);
-  if (!Number.isFinite(v)) v = 3000;
-  v = Math.max(0, Math.min(30000, v));
-  $('blkA_delay_in').value = v;
-  postBlinkA('/api/blinkA/delay?ms=' + v);
-  showToast('Delay set to ' + v + ' ms');
-}
-$('blkA_delay_apply').addEventListener('click', applyBlinkADelay);
-$('blkA_delay_in').addEventListener('keydown', e => { if (e.key === 'Enter') applyBlinkADelay(); });
-
-async function setUlcConfig(kind, value) {
-  const s = await fetch('/api/summon/stats', {cache:'no-store'}).then(r => r.json());
-  let blind = s.ulcBlind ?? 0;
-  let speed = s.ulcSpeed ?? 0;
-  if (kind === 'blind') blind = Number(value);
-  if (kind === 'speed') speed = Number(value);
-  await fetch('/api/summon/ulc-config?blind=' + blind + '&speed=' + speed, {method:'POST'});
-  fetchEapStats();
-  showToast('ULC configuration updated');
-}
-document.querySelectorAll('#ulcBlindSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('blind', b.dataset.value)));
-document.querySelectorAll('#ulcSpeedSeg button').forEach(b => b.addEventListener('click', () => setUlcConfig('speed', b.dataset.value)));
-
-// ===== NAG ECHO JS =====
-let nagCfg = null;
-let nagIsLoading = false;
-
-function nmFromBytes(b2, b3) {
-  const raw = ((b2 & 0x0F) << 8) | (b3 & 0xFF);
-  return (raw * 0.01 - 20.5);
-}
-
-function renderNagTorque() {
-  if (!nagCfg || !nagCfg.torque) return;
-  const tb = $('tq_tbody');
-  tb.innerHTML = '';
-  nagCfg.torque.forEach((t, i) => {
-    const tr = document.createElement('tr');
-    const b2Hex = '0x' + t.b2.toString(16).padStart(2,'0').toUpperCase();
-    const b3Hex = '0x' + t.b3.toString(16).padStart(2,'0').toUpperCase();
-    tr.innerHTML = `<td>${i}</td>
-      <td><input type="text" data-i="${i}" data-k="b2" value="${b2Hex}"></td>
-      <td><input type="text" data-i="${i}" data-k="b3" value="${b3Hex}"></td>
-      <td id="nm_${i}">${nmFromBytes(t.b2,t.b3).toFixed(2)}</td>`;
-    tb.appendChild(tr);
-  });
-  tb.querySelectorAll('input').forEach(inp => inp.addEventListener('input', e => {
-    const i = +e.target.dataset.i, k = e.target.dataset.k;
-    const v = parseInt(e.target.value, 16);
-    if (Number.isFinite(v) && nagCfg && nagCfg.torque[i]) {
-      nagCfg.torque[i][k] = v & 0xFF;
-      $(`nm_${i}`).textContent = nmFromBytes(nagCfg.torque[i].b2, nagCfg.torque[i].b3).toFixed(2);
-    }
-  }));
-}
-
-function renderNagConfig() {
-  if (!nagCfg) return;
-  $('f_id').value    = '0x' + nagCfg.targetId.toString(16).toUpperCase().padStart(3,'0');
-  $('f_apId').value  = '0x' + nagCfg.apStateId.toString(16).toUpperCase().padStart(3,'0');
-  $('f_stId').value  = '0x' + nagCfg.steeringId.toString(16).toUpperCase().padStart(3,'0');
-  $('f_ho').value    = nagCfg.hoRatePct;
-  $('f_burst').value = nagCfg.burstMs;
-  $('f_pause').value = nagCfg.pauseMs;
-  $('lbl_burst').textContent = nagCfg.burstMs;
-  $('lbl_pause').textContent = nagCfg.pauseMs;
-  $('toggle').textContent = nagCfg.enabled ? 'Disable' : 'Enable';
-  [['modeA',0],['modeB',1]].forEach(([id,m]) => { const el = $(id); if (el) el.classList.toggle('primary', nagCfg.mode === m); });
-  renderNagTorque();
-}
-
-async function loadNagConfig() {
-  try {
-    const r = await fetch('/api/nag/config');
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    nagCfg = await r.json();
-    renderNagConfig();
-    $('toggle').disabled = false;
-    $('apply').disabled = false;
-    $('modeA').disabled = false;
-    $('modeB').disabled = false;
-    $('modeR').disabled = false;
-    $('tq_add').disabled = false;
-    $('tq_del').disabled = false;
-  } catch(e) {
-    console.error('Failed to load nag config:', e);
-    $('conn').textContent = 'nag cfg error';
-    $('conn').className = 'pill bad';
-    setTimeout(loadNagConfig, 2000);
-  }
-}
-
-let nagLastOkMs = 0;
-async function tickNagStats() {
-  if (nagIsLoading) return;
-  try {
-    nagIsLoading = true;
-    const ctrl = new AbortController();
-    const to = setTimeout(() => ctrl.abort(), 1200);
-    const r = await fetch('/api/nag/stats', { cache:'no-store', signal: ctrl.signal });
-    clearTimeout(to);
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const s = await r.json();
-    $('s_rx').textContent   = s.rx;
-    $('s_echo').textContent = s.echo;
-    $('s_tx').textContent   = s.txOk + ' / ' + s.txFail;
-    $('s_lat').textContent  = s.latUs + ' µs';
-    $('s_ho').textContent   = s.ho;
-    $('s_tq').textContent   = (s.torque>=0?'+':'') + s.torque.toFixed(2) + ' Nm';
-    $('s_inj').textContent  = (s.injNm>=0?'+':'') + s.injNm.toFixed(2) + ' Nm  ho=' + s.injHo;
-    const cs = ['OK','running','bus-off','error'][s.canAState] || String(s.canAState);
-    $('s_cs').textContent = cs;
-    $('s_cs').className = 'v ' + (s.canAState===0?'ok':s.canAState===1?'ok':'bad');
-    $('s_up').textContent   = s.uptimeS + ' s';
-    $('conn').textContent  = 'connected';
-    $('conn').className    = 'pill ok';
-    $('s_en').textContent   = nagCfg && nagCfg.enabled ? 'YES' : 'NO';
-    $('s_en').className     = 'v ' + (nagCfg && nagCfg.enabled ? 'ok' : 'warn');
-    nagLastOkMs = Date.now();
-  } catch(e) {
-    if (Date.now() - nagLastOkMs > 3000) {
-      $('conn').textContent = 'lost';
-      $('conn').className   = 'pill bad';
-    }
-  } finally {
-    nagIsLoading = false;
-  }
-}
-
-async function setNagMode(m) {
-  if (!nagCfg) { showToast('not ready'); return; }
-  try {
-    const r = await fetch('/api/nag/mode?m=' + m, { method: 'POST' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    nagCfg = await r.json();
-    renderNagConfig();
-    showToast('mode applied');
-  } catch(e) {
-    showToast('error: ' + e.message);
-  }
-}
-
-async function applyNagOverrides() {
-  if (!nagCfg || !nagCfg.torque) { showToast('not ready'); return; }
-  try {
-    const id   = parseInt($('f_id').value, 16);
-    const apId = parseInt($('f_apId').value, 16);
-    const stId = parseInt($('f_stId').value, 16);
-    const ho   = +$('f_ho').value;
-    const burst= +$('f_burst').value;
-    const pause= +$('f_pause').value;
-    if (!Number.isFinite(id) || !Number.isFinite(apId) || !Number.isFinite(stId)) {
-      showToast('invalid hex ID'); return;
-    }
-    const params = new URLSearchParams();
-    params.set('targetId',  String(id));
-    params.set('apStateId', String(apId));
-    params.set('steeringId',String(stId));
-    params.set('hoRatePct', String(ho));
-    params.set('burstMs',   String(burst));
-    params.set('pauseMs',   String(pause));
-    params.set('count', String(nagCfg.torque.length));
-    nagCfg.torque.forEach((t, i) => {
-      params.set('b2_' + i, String(t.b2));
-      params.set('b3_' + i, String(t.b3));
-    });
-    const r = await fetch('/api/nag/update?' + params, { method: 'POST' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    nagCfg = await r.json();
-    renderNagConfig();
-    showToast('saved');
-  } catch(e) {
-    showToast('error: ' + e.message);
-  }
-}
-
-$('modeA').onclick  = () => setNagMode(0);
-$('modeB').onclick  = () => setNagMode(1);
-$('modeR').onclick  = async () => {
-  if (!nagCfg) { showToast('not ready'); return; }
-  if (!confirm('Reset all settings to Mode A defaults?')) return;
-  try {
-    const r = await fetch('/api/nag/reset', { method:'POST' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    nagCfg = await r.json();
-    renderNagConfig();
-    showToast('reset');
-  } catch(e) {
-    showToast('error: ' + e.message);
-  }
-};
-$('apply').onclick  = applyNagOverrides;
-$('toggle').onclick = () => {
-  if (!nagCfg) { showToast('not ready'); return; }
-  const params = new URLSearchParams({ enabled: nagCfg.enabled ? '0' : '1' });
-  fetch('/api/nag/update?' + params, { method:'POST' })
-    .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
-    .then(c => { nagCfg = c; renderNagConfig(); showToast(nagCfg.enabled ? 'enabled' : 'disabled'); })
-    .catch(e => showToast('error: ' + e.message));
-};
-$('tq_add').onclick = () => {
-  if (!nagCfg || !nagCfg.torque) return;
-  if (nagCfg.torque.length >= 8) { showToast('max 8 entries'); return; }
-  nagCfg.torque.push({ b2: 0x08, b3: 0xB6 });
-  renderNagTorque();
-};
-$('tq_del').onclick = () => {
-  if (!nagCfg || !nagCfg.torque) return;
-  if (nagCfg.torque.length <= 1) { showToast('min 1 entry'); return; }
-  nagCfg.torque.pop();
-  renderNagTorque();
-};
-
-// ===== SUMMON UNLOCK JS =====
-const SUMMON_CAN_STATES = ['running','recovering','bus-off','stopped'];
-
-async function fetchSummonStats() {
-  try {
-    const s = await fetch('/api/summon/stats').then(r => r.json());
-    const big = $('sum_big');
-    if (s.forceMode) {
-      big.textContent = 'FORCE';
-      big.className   = 'big-state warn';
-    } else {
-      big.textContent = s.enabled ? 'ON' : 'OFF';
-      big.className   = 'big-state ' + (s.enabled ? 'on' : 'off');
-    }
-
-    const btnForceMode = $('btnForceMode');
-    if (btnForceMode) {
-      btnForceMode.textContent = s.forceMode ? 'AP Injection: ON' : 'AP Injection: OFF';
-      btnForceMode.style.opacity = s.forceMode ? '1' : '0.7';
-    }
-
-    const gate = s.gate;
-    const gs = $('sum_gate_status');
-    gs.textContent = gate ? 'OPEN — injection allowed' : 'CLOSED — injection blocked';
-    gs.className   = 'gate-status ' + (gate ? 'open' : 'closed');
-
-    $('sum_g_ap_v').textContent = s.ap ? 'ON' : 'OFF';
-    $('sum_g_ap_v').style.color = s.ap ? 'var(--ok)' : 'var(--muted)';
-    $('sum_g_pk').classList.toggle('active', !!s.parked);
-    $('sum_g_pk_v').textContent = s.parked ? 'ON' : 'OFF';
-    $('sum_g_su').classList.toggle('active', !!s.summon);
-    $('sum_g_su_v').textContent = s.summon ? 'ON' : 'OFF';
-
-    $('sum_d_aca').textContent = s.aca ? 'ACTIVE' : 'inactive';
-    $('sum_d_aca').className = 'v ' + (s.aca ? 'ok' : '');
-    $('sum_d_spr').textContent = s.spr ? 'SEEN' : 'not seen';
-    $('sum_d_spr').className = 'v ' + (s.spr ? 'ok' : '');
-
-    $('sum_s_280').textContent  = s.rx280;
-    $('sum_s_390').textContent  = s.rx390;
-    $('sum_s_921').textContent  = s.rx921;
-    $('sum_s_1016').textContent = s.rx1016;
-    $('sum_s_rx').textContent   = s.rxMux1;
-    $('sum_s_ok').textContent   = s.txOk;
-    $('sum_s_fail').textContent = s.txFail;
-    $('sum_s_fail').className   = 'v ' + (s.txFail > 0 ? 'warn' : '');
-
-    const cs = SUMMON_CAN_STATES[s.canState] ?? String(s.canState);
-    $('sum_s_can').textContent = cs;
-    $('sum_s_can').className   = 'v ' + (s.canState === 0 ? 'ok' : s.canState === 2 ? 'bad' : 'warn');
-
-    const u = s.uptimeS;
-    $('sum_s_up').textContent = u < 60 ? u + 's' : Math.floor(u/60) + 'm' + (u%60) + 's';
-
-    const tg = $('tlsscToggle');
-    if (tg && document.activeElement !== tg) tg.checked = !!s.tlssc;
-    const tr = $('tlsscRestoreToggle');
-    if (tr && document.activeElement !== tr) tr.checked = !!s.tlrst;
-
-    $('conn').textContent = 'connected';
-    $('conn').className   = 'pill ok';
-  } catch {
-    $('conn').textContent = 'lost';
-    $('conn').className   = 'pill bad';
-  }
-}
-
-async function postSummon(url) {
-  await fetch(url, { method: 'POST' });
-  fetchSummonStats();
-}
-
-$('tlsscToggle').addEventListener('change', (e) => {
-  postSummon(e.target.checked ? '/api/summon/tlssc-enable' : '/api/summon/tlssc-disable');
-  showToast(e.target.checked ? 'TLSSC enabled' : 'TLSSC disabled');
-});
-
-$('tlsscRestoreToggle').addEventListener('change', (e) => {
-  postSummon(e.target.checked ? '/api/summon/tlrst-enable' : '/api/summon/tlrst-disable');
-  showToast(e.target.checked ? 'TLSSC Restore enabled' : 'TLSSC Restore disabled');
-});
-
-// ===== FIRMWARE / SYSTEM JS =====
-async function fetchSystemStats() {
-  try {
-    const s = await fetch('/api/system/stats').then(r => r.json());
-    if (s.fwVersion) {
-      $('fw_ver').textContent = s.fwVersion;
-      $('hdr_ver').textContent = s.fwVersion;
-    }
-    if (s.freeHeap !== undefined) $('fw_free').textContent = Math.round(s.freeHeap/1024) + ' KB';
-    $('fw_mcp').textContent  = s.mcpReady  ? 'ready' : 'not ready';
-    $('fw_mcp').className    = 'v ' + (s.mcpReady  ? 'ok' : 'bad');
-    $('fw_twai').textContent = s.twaiReady ? 'ready' : 'not ready';
-    $('fw_twai').className   = 'v ' + (s.twaiReady ? 'ok' : 'bad');
-    if (s.rtcBootCount !== undefined) $('fw_boot').textContent = s.rtcBootCount;
-  } catch(e) {
-    // keep last known values
-  }
-}
-
-// ── OTA upload ───────────────────────────────────────────────
-function uploadOta() {
-  const input = $('otaFile');
-  const file = input.files[0];
-  const msg = $('otaMsg');
-  const wrap = $('otaProgressWrap');
-  const bar = $('otaProgressBar');
-  const btn = $('btnOtaUpload');
-
-  if (!file) {
-    msg.textContent = 'Please choose a .bin file first.';
-    msg.className = 'ota-msg bad';
-    return;
-  }
-
-  const form = new FormData();
-  form.append('update', file, file.name);
-
-  otaUploading = true;
-  btn.disabled = true;
-  input.disabled = true;
-  wrap.className = 'progress show';
-  bar.style.width = '0%';
-  msg.textContent = 'Uploading ' + file.name + '…';
-  msg.className = 'ota-msg';
-
-  const xhr = new XMLHttpRequest();
-  xhr.open('POST', '/update', true);
-
-  xhr.upload.onprogress = (e) => {
-    if (e.lengthComputable) {
-      const pct = Math.round((e.loaded / e.total) * 100);
-      bar.style.width = pct + '%';
-      msg.textContent = 'Uploading… ' + pct + '%';
-    }
-  };
-
-  xhr.onload = () => {
-    let ok = xhr.status === 200;
-    let errText = '';
-    try {
-      const r = JSON.parse(xhr.responseText);
-      ok = ok && r.ok;
-      errText = r.error || '';
-    } catch {}
-
-    if (ok) {
-      bar.style.width = '100%';
-      msg.textContent = 'Flash successful — rebooting…';
-      msg.className = 'ota-msg ok';
-      setTimeout(() => location.reload(), 6000);
-    } else {
-      msg.textContent = 'OTA failed' + (errText ? ': ' + errText : '');
-      msg.className = 'ota-msg bad';
-      btn.disabled = false;
-      input.disabled = false;
-      otaUploading = false;
-    }
-  };
-
-  xhr.onerror = () => {
-    msg.textContent = 'Upload error — device likely rebooted or connection lost.';
-    msg.className = 'ota-msg bad';
-    btn.disabled = false;
-    input.disabled = false;
-    otaUploading = false;
-  };
-
-  xhr.send(form);
-}
-
-// ===== STARTUP =====
-loadNagConfig().then(() => { tickNagStats(); setInterval(() => { if (!otaUploading) tickNagStats(); }, 500); });
-fetchEapStats();
-setInterval(() => { if (!otaUploading) fetchEapStats(); }, 500);
-fetchSummonStats();
-setInterval(() => { if (!otaUploading) fetchSummonStats(); }, 800);
-fetchSystemStats();
-setInterval(() => { if (!otaUploading) fetchSystemStats(); }, 3000);
+loadNag();fetchNag();fetchBlink();fetchDas();fetchSum();fetchSys();setInterval(()=>{if(!otaUploading){fetchNag();fetchBlink()}},500);setInterval(()=>{if(!otaUploading){fetchDas();fetchSum()}},800);setInterval(()=>{if(!otaUploading)fetchSys()},3000);
 </script>
-</body>
-</html>
+</body></html>
 )HTML";
