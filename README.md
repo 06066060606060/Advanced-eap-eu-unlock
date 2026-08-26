@@ -38,7 +38,7 @@ CAN B Chassis CAN → EU Summon Unlock
 - Continue on Green with Car in Front (TLSSC)
 - OTA Update
 
-## Branch for Model YL (alpha version fix soon)
+## Branch for Model YL
 - https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
 
 ## Hardware Target
