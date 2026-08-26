@@ -89,6 +89,7 @@ https://discord.gg/euPbYG8Npc
 
 - Inspired by `Ev Open Can Mod` https://github.com/ev-open-can-tools/ev-open-can-tools
 - Created by X₿mod.
+- Updated by LP_YL
 - ESP32 TWAI driver by Espressif Systems
 - Automotive CAN research community
 
