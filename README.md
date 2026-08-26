@@ -70,7 +70,7 @@ https://github.com/autowp/arduino-mcp2515
 - Open 192.168.4.1 in a browser.  
 - Use the tabs to switch between Advanced-EAP, Nag Echo and Summon Unlock
 
-⚠️ Do not enable TLSSC if you do not have the FSD subscription. 
+⚠️ Do not enable TLSSC if you do not have the EAP/FSD subscription. 
 
 ## Build firmware using arduino IDE for OTA
 - Open Sketch > Export Compiled Binary.
