@@ -1,5 +1,5 @@
 
-# Nag-killer Advanced EAP & EU-Unlock V1.0a Model YL version for LilyGO/T-2Can  
+# Nag-killer Advanced EAP & EU-Unlock V2.3 Model YL version for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
@@ -7,9 +7,9 @@
 ---
 
 
-## ⚠️ autolane change doesn't work on model YL fix released soon 
 
-## Version1.0a 
+## Version2.3 by LP YL
+
 -----------------Nag Killer------------------    
 - remove nag  
 -----------------Advanced EAP----------------  
@@ -19,8 +19,6 @@
 - you can always cancel on screen or with opposite turn signal.  
 
 --------------------EU Unlock------------------
-- Added madmax settings toggle  
-- toggle to restore TLSSC on banned car*
 - toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)  
 - bypass R79 EU restriction in AP
 - Expend summon to +/-  85m
@@ -60,8 +58,8 @@ https://github.com/autowp/arduino-mcp2515
 - pin_config.h  
 
 ## Wiring model YL
-- CAN A (MCP2515): connect to the Party CAN bus - Nag Killer(2-3)
-- CAN B (TWAI): connect to the Body CAN bus - Summon Unlock -  adv-eap(9-10)
+- CAN A (MCP2515): connect to the Party CAN bus (2-3)
+- CAN B (TWAI): connect to the Body CAN bus (9-10)
 
 ## Dashboard Notes
 
