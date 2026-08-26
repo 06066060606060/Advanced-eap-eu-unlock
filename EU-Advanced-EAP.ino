@@ -265,6 +265,7 @@ static volatile bool forceMode = false;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool summonEnabled = true;
 static volatile bool tlsscEnabled  = false;   // "Enable TLSSC" - off by default
+static volatile bool tlsscRestoreEnabled = false; // "Restore TLSSC" - for banned cars only
 static volatile bool gateAPActive  = false;
 static volatile bool gateNOAActive = false;   // raw DAS_autopilotState == ACTIVE_NAV (5)
 static volatile uint8_t dasAutopilotState4 = 0xFF; // low nibble of Party-CAN 0x399 byte0
@@ -1026,6 +1027,32 @@ static void injectSummon(const twai_message_t &src) {
     else               sumTxFail++;
 }
 
+// ── TLSSC Restore : 0x331 (DAS_autopilotConfig) ──
+ // DAS_autopilot & DAS_autopilotBase -> SELF_DRIVING(3)
+ // Force byte0 low 6 bits to 0x1B while preserving the top 2 bits.
+static void doInjectTlsscRestore(const twai_message_t &src) {
+    bool en;
+    portENTER_CRITICAL(&stateMux);
+    en = tlsscRestoreEnabled;
+    portEXIT_CRITICAL(&stateMux);
+    if (!en || src.data_length_code < 1) return;
+
+    // Do not echo a frame that is already patched.
+    if ((src.data[0] & 0x3F) == 0x1B) return;
+
+    twai_message_t out = {};
+    out.identifier       = 0x331;
+    out.data_length_code = src.data_length_code;
+    out.flags            = 0;
+    for (int i = 0; i < 8; i++) out.data[i] = src.data[i];
+
+    out.data[0] = (uint8_t)((out.data[0] & 0xC0) | 0x1B);
+
+    esp_err_t err = twai_transmit(&out, pdMS_TO_TICKS(2));
+    if (err == ESP_OK) sumTxOk++;
+    else               sumTxFail++;
+}
+
 // ── TLSSC : 0x3FD mux0 bit38/39 ──
 // rev.16: TLSSC has its own AP-active gate. It no longer shares or bypasses
 // the Parked/Summoning gate used by Summon/EU Unlock.
@@ -1078,6 +1105,7 @@ static void summonCfgLoad() {
     prefs.begin("summon", false);
     summonEnabled = prefs.getBool("en", true);
     tlsscEnabled  = prefs.getBool("tlssc", false);
+    tlsscRestoreEnabled = prefs.getBool("tlrst", false);
     blinkAEnabled = prefs.getBool("blkA", true);
     blinkAMode = (uint8_t)constrain((int)prefs.getUInt("blkAMode", BLINKA_MODE_NOA_ONLY), BLINKA_MODE_NOA_ONLY, BLINKA_MODE_AP_NOA);
 
@@ -1105,6 +1133,7 @@ static void summonCfgSave() {
     prefs.begin("summon", false);
     prefs.putBool("en", summonEnabled);
     prefs.putBool("tlssc", tlsscEnabled);
+    prefs.putBool("tlrst", tlsscRestoreEnabled);
     prefs.putBool("blkA", blinkAEnabled);
     prefs.putUInt("blkAMode", blinkAMode);
     prefs.putUInt("blkADly", blinkADelayMs);
@@ -1130,13 +1159,14 @@ extern const char INDEX_HTML[] PROGMEM;
 static WebServer server(80);
 
 static String summonStatsToJson() {
-    bool en, tlssc, ap, parked, summon, aca, spr, fmode, priorityFreshParked;
+    bool en, tlssc, tlsscRestore, ap, parked, summon, aca, spr, fmode, priorityFreshParked;
     uint8_t priorityState;
     uint32_t prioritySince, priorityTransitions, priorityFullEnter, priorityFullExit, priorityFullInactiveSince;
     uint32_t rmx, tok, tfail, r280, r390, r921, r1016;
     portENTER_CRITICAL(&stateMux);
     en     = summonEnabled;
     tlssc  = tlsscEnabled;
+    tlsscRestore = tlsscRestoreEnabled;
     ap     = gateAPActive;
     parked = gateParked;
     summon = gateSummoning;
@@ -1164,6 +1194,7 @@ static String summonStatsToJson() {
     String s = "{";
     s += "\"enabled\":"  + String(en     ? "true" : "false");
     s += ",\"tlssc\":"   + String(tlssc  ? "true" : "false");
+    s += ",\"tlsscRestore\":" + String(tlsscRestore ? "true" : "false");
     s += ",\"gate\":"    + String(gate   ? "true" : "false");
     s += ",\"ap\":"      + String(ap     ? "true" : "false");
     s += ",\"parked\":"  + String(parked ? "true" : "false");
@@ -1512,6 +1543,22 @@ static void httpSummonTlsscDisable() {
     server.send(200, "application/json", summonStatsToJson());
 }
 
+static void httpSummonTlsscRestoreEnable() {
+    portENTER_CRITICAL(&stateMux);
+    tlsscRestoreEnabled = true;
+    portEXIT_CRITICAL(&stateMux);
+    summonCfgSave();
+    server.send(200, "application/json", summonStatsToJson());
+}
+
+static void httpSummonTlsscRestoreDisable() {
+    portENTER_CRITICAL(&stateMux);
+    tlsscRestoreEnabled = false;
+    portEXIT_CRITICAL(&stateMux);
+    summonCfgSave();
+    server.send(200, "application/json", summonStatsToJson());
+}
+
 static void httpSummonForceMode() {
     portENTER_CRITICAL(&stateMux);
     forceMode = !forceMode;
@@ -1654,6 +1701,8 @@ static void webTask(void *arg) {
   server.on("/api/summon/disable",HTTP_POST, httpSummonDisable);
   server.on("/api/summon/tlssc-enable",  HTTP_POST, httpSummonTlsscEnable);
   server.on("/api/summon/tlssc-disable", HTTP_POST, httpSummonTlsscDisable);
+  server.on("/api/summon/tlssc-restore-enable", HTTP_POST, httpSummonTlsscRestoreEnable);
+  server.on("/api/summon/tlssc-restore-disable", HTTP_POST, httpSummonTlsscRestoreDisable);
   server.on("/api/summon/forcemode", HTTP_POST, httpSummonForceMode);
   server.on("/api/blinkA/stats", HTTP_GET, httpBlinkAStats);
   server.on("/api/blinkA/enable", HTTP_POST, httpBlinkAEnable);
@@ -1803,6 +1852,9 @@ static void canTaskTwai(void* arg) {
         case DRIVER_ASSIST_ID:
           // 0x3F8 is RX-only: SPR detection + passive stock ULC telemetry.
           handle1016(f.data, f.data_length_code);
+          break;
+        case 817:   // 0x331 - DAS_autopilotConfig
+          if (f.data_length_code >= 1) doInjectTlsscRestore(f);
           break;
         case 1021:
           if (f.data_length_code >= 8) {
