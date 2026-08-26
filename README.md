@@ -60,6 +60,9 @@ https://github.com/autowp/arduino-mcp2515
 - index_html.h  
 - pin_config.h  
 
+## Confirmed working
+- MODEL YL 2026 Shanghai (After April)
+
 ## Wiring model YL
 - CAN A (MCP2515): connect to the Party CAN bus (2-3)
 - CAN B (TWAI): connect to the Body CAN bus (9-10)
