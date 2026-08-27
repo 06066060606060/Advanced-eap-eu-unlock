@@ -73,7 +73,9 @@ https://github.com/autowp/arduino-mcp2515
 - pin_config.h
 
 ## Confirmed working
-MODEL Y 2024 HW4  (Berlin) Firmware 2026.26.1
+- AP Injection doesn't work before 2026.20
+- MODEL Y 2024 HW4  (Berlin) Firmware 2026.26.1
+
 
 ## Wiring
 - CAN A (MCP2515): connect to the Body CAN bus - Nag Killer (9-10)
