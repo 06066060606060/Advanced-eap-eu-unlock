@@ -278,7 +278,7 @@ static constexpr uint32_t NOA_STATUS_FRESH_MS = 2000; // fail-closed Auto Blinke
 
 // Auto Blinker gate uses the latest fresh 0x399 DAS state.
 // NOA only mode accepts state 5.
-// AP + NOA mode accepts states 3 and 5.
+// AP + NOA mode accepts states 3, 4 and 5.
 // Other states and stale/missing 0x399 are always blocked.
 // Auto Blinker mode/state must be declared before autoBlinkerGateOpen().
 #define BLINKA_MODE_NOA_ONLY 0
@@ -304,7 +304,7 @@ static bool autoBlinkerGateOpen(uint32_t now, uint32_t* ageOut = nullptr) {
   if (last == 0 || age > NOA_STATUS_FRESH_MS) return false;
 
   if (mode == BLINKA_MODE_AP_NOA) {
-    return dasState == 3 || dasState == 5;
+    return dasState == 3 || dasState == 4 || dasState == 5;
   }
   return dasState == 5;
 }
@@ -970,10 +970,10 @@ static void handle921(const uint8_t *data) {
     portEXIT_CRITICAL(&blinkAMux);
 
     const bool oldGate = (blinkMode == BLINKA_MODE_AP_NOA)
-                           ? (oldDasState == 3 || oldDasState == 5)
+                           ? (oldDasState == 3 || oldDasState == 4 || oldDasState == 5)
                            : (oldDasState == 5);
     const bool newGate = (blinkMode == BLINKA_MODE_AP_NOA)
-                           ? (dasState4 == 3 || dasState4 == 5)
+                           ? (dasState4 == 3 || dasState4 == 4 || dasState4 == 5)
                            : (dasState4 == 5);
 
     // Cancel only a delayed trigger when the selected gate closes.
