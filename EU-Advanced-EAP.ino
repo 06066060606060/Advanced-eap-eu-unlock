@@ -13,7 +13,7 @@
 #include "driver/twai.h"
 #include "index_html.h"
 
-#define FW_VERSION "ADV-EAP-EU-UNLOCK-v2.0b"
+#define FW_VERSION "ADV-EAP-EU-UNLOCK-v2.5b"
 
 // T-2CAN board specific
 #include "pin_config.h"
@@ -265,6 +265,11 @@ static volatile bool forceMode = false;
 static portMUX_TYPE stateMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile bool summonEnabled = true;
 static volatile bool tlsscEnabled  = false;   // "Enable TLSSC" - off by default
+// Latest real 0x3FD mux1 frame, used as the template for AP/ALC snooze.
+static volatile bool seen3fdMux1 = false;
+static uint8_t realRaw3fdMux1[8] = {0};
+static volatile uint32_t snoozeTxOk = 0;
+static volatile uint32_t snoozeTxFail = 0;
 static volatile bool gateAPActive  = false;
 static volatile bool gateNOAActive = false;   // raw DAS_autopilotState == ACTIVE_NAV (5)
 static volatile uint8_t dasAutopilotState4 = 0xFF; // low nibble of Party-CAN 0x399 byte0
@@ -343,7 +348,7 @@ static volatile uint32_t sumRx1016   = 0;
 static char gateBlockReason[48] = "boot";
 // ═══════════════════════════════════════════════════════════════
 // ADVANCED EAP — UNIVERSAL ROUTING
-//   CAN A / MCP2515 : RX/TX SCCM_turnIndicatorStalkStatus (0x249, DLC 4) only
+//   CAN A / MCP2515 : 0x249 RX/TX + 0x102 RX + 0x247 TX (Body CAN)
 //   CAN B / TWAI    : DAS visual debug (0x24A), 0x3F8, 0x3FD and Summon traffic
 // ═══════════════════════════════════════════════════════════════
 
@@ -400,6 +405,18 @@ static volatile uint32_t visualDebugLastMs = 0;
 // modifies or retransmits UI_ulcSpeedConfig / UI_ulcBlindSpotConfig.
 static volatile uint8_t uiUlcBlindSpotConfig = 0;
 static volatile uint8_t uiUlcSpeedConfig = 0;
+
+// Lane Change / ULC blind-spot configuration.
+// 0 = STANDARD, 1 = AGGRESSIVE, 2 = MAD_MAX.
+// Injection is active only while DAS state is 3 (AP) or 5 (NOA).
+static volatile uint8_t ulcBlindSpotInjectConfig = 0;
+static volatile bool laneChangeButtonPressed = false;
+static volatile uint32_t laneChangeButtonRx = 0;
+
+// Latest stock DAS_autopilotDebug (0x247) template on CAN A.
+static volatile bool seen247 = false;
+static uint8_t realRaw247[8] = {0};
+static volatile uint32_t laneChangeCancelCount = 0;
 
 // CAN B load-shedding / queue telemetry.
 // rev.05: priority policy is state-scoped so normal/AP driving cannot trigger
@@ -976,12 +993,50 @@ static void handle1016(const uint8_t *data, uint8_t dlc) {
     sumRx1016++;
     const uint32_t now = (uint32_t)millis();
     uint8_t spr = (data[3] >> 4) & 0x0F;
+
     if (dlc >= 7) {
         // UI_ulcSpeedConfig: bits 50-51.
         // UI_ulcBlindSpotConfig: bits 52-53.
         uiUlcSpeedConfig = (data[6] >> 2) & 0x03;
         uiUlcBlindSpotConfig = (data[6] >> 4) & 0x03;
     }
+
+    bool apNoa = false;
+    uint8_t injectCfg = 0;
+    portENTER_CRITICAL(&stateMux);
+    const uint8_t dasState = dasAutopilotState4;
+    apNoa = (dasState == 3 || dasState == 5) &&
+            lastDASStatusMillis != 0 &&
+            (uint32_t)(now - lastDASStatusMillis) <= NOA_STATUS_FRESH_MS;
+    portEXIT_CRITICAL(&stateMux);
+
+    portENTER_CRITICAL(&blinkAMux);
+    injectCfg = ulcBlindSpotInjectConfig;
+    portEXIT_CRITICAL(&blinkAMux);
+
+    // Inject only in AP / NOA. Keep all unrelated bits from the stock frame.
+    if (dlc >= 7 && apNoa) {
+        const uint8_t stockCfg = (data[6] >> 4) & 0x03;
+        if (stockCfg != injectCfg) {
+            twai_message_t out = {};
+            out.identifier = DRIVER_ASSIST_ID;
+            out.data_length_code = dlc;
+            out.flags = 0;
+            for (uint8_t i = 0; i < 8; i++) out.data[i] = data[i];
+
+            out.data[6] = (uint8_t)((out.data[6] & ~(0x03u << 4)) |
+                                   ((injectCfg & 0x03u) << 4));
+
+            if (twaiNonSummonAdmissionOpen()) {
+                esp_err_t err = twai_transmit(&out, 0);
+                if (err == ESP_OK) sumTxOk++;
+                else               sumTxFail++;
+            } else {
+                sumTxFail++;
+            }
+        }
+    }
+
     portENTER_CRITICAL(&stateMux);
     if (spr != 0)
         sprSeen = true;
@@ -1080,6 +1135,7 @@ static void summonCfgLoad() {
     tlsscEnabled  = prefs.getBool("tlssc", false);
     blinkAEnabled = prefs.getBool("blkA", true);
     blinkAMode = (uint8_t)constrain((int)prefs.getUInt("blkAMode", BLINKA_MODE_NOA_ONLY), BLINKA_MODE_NOA_ONLY, BLINKA_MODE_AP_NOA);
+    ulcBlindSpotInjectConfig = (uint8_t)constrain((int)prefs.getUInt("ulcBspot", 0), 0, 2);
 
     // rev.17 one-time migration: make the new 2.0 s Auto Blinker delay take
     // effect even on vehicles that already have rev.16's 3000 ms value in NVS.
@@ -1108,6 +1164,7 @@ static void summonCfgSave() {
     prefs.putBool("blkA", blinkAEnabled);
     prefs.putUInt("blkAMode", blinkAMode);
     prefs.putUInt("blkADly", blinkADelayMs);
+    prefs.putUInt("ulcBspot", ulcBlindSpotInjectConfig);
     prefs.end();
 }
 
@@ -1259,6 +1316,10 @@ static String blinkAStatsToJson() {
   s += ",\"dasState\":" + String((int)dasState4);
   s += ",\"forceMode\":" + String(fmode ? "true" : "false");
   s += ",\"behaviorType\":" + String((int)visualBehaviorType);
+  s += ",\"ulcBlindSpotInjectConfig\":" + String((int)ulcBlindSpotInjectConfig);
+  s += ",\"laneChangeButtonPressed\":" + String(laneChangeButtonPressed ? "true" : "false");
+  s += ",\"laneChangeButtonRx\":" + String((unsigned long)laneChangeButtonRx);
+  s += ",\"laneChangeCancelCount\":" + String((unsigned long)laneChangeCancelCount);
   s += ",\"activeTurn\":" + String(curTurn);
   s += ",\"delayMs\":" + String(delayMs);
   s += ",\"autoArmed\":" + String(armed ? "true" : "false");
@@ -1567,6 +1628,16 @@ static void httpBlinkAMode() {
   server.send(200, "application/json", blinkAStatsToJson());
 }
 
+static void httpLaneChangeBlindspot() {
+  int v = server.hasArg("cfg") ? server.arg("cfg").toInt() : 0;
+  v = constrain(v, 0, 2);
+  portENTER_CRITICAL(&blinkAMux);
+  ulcBlindSpotInjectConfig = (uint8_t)v;
+  portEXIT_CRITICAL(&blinkAMux);
+  summonCfgSave();
+  server.send(200, "application/json", blinkAStatsToJson());
+}
+
 static void httpBlinkADelay() {
   int v = server.hasArg("ms") ? server.arg("ms").toInt() : (int)BLINKA_AUTO_DELAY_DEFAULT_MS;
   v = constrain(v, 0, 30000);
@@ -1659,6 +1730,7 @@ static void webTask(void *arg) {
   server.on("/api/blinkA/enable", HTTP_POST, httpBlinkAEnable);
   server.on("/api/blinkA/disable", HTTP_POST, httpBlinkADisable);
   server.on("/api/blinkA/delay", HTTP_POST, httpBlinkADelay);
+  server.on("/api/laneChange/blindspot", HTTP_POST, httpLaneChangeBlindspot);
   server.on("/api/blinkA/mode", HTTP_POST, httpBlinkAMode);
   server.on("/api/das/stats", HTTP_GET, httpDasTelemetryStats);
   server.on("/api/system/stats",  HTTP_GET,  httpSystemStats);
@@ -1690,6 +1762,113 @@ static void mcpReinit() {
   mcpTxFailConsecutive = 0;
 }
 
+static void handle247OnCanA(const uint8_t *data, uint8_t dlc) {
+  if (dlc < 8) return;
+  portENTER_CRITICAL(&blinkAMux);
+  memcpy(realRaw247, data, 8);
+  seen247 = true;
+  portEXIT_CRITICAL(&blinkAMux);
+}
+
+static void sendLaneChangeSoftAbortingLeft247() {
+  uint8_t dat[8] = {0};
+
+  portENTER_CRITICAL(&blinkAMux);
+  if (seen247) memcpy(dat, realRaw247, 8);
+  portEXIT_CRITICAL(&blinkAMux);
+
+  // DAS_alcInternalState: 12|4@1+, raw 10 (0xA) = SOFT_ABORTING_LEFT.
+  // Bits 12..15 are the high nibble of byte 1. Preserve all other bits.
+  dat[1] = (uint8_t)((dat[1] & 0x0Fu) | 0xA0u);
+
+  struct can_frame out = {};
+  out.can_id = 0x247;
+  out.can_dlc = 8;
+  memcpy(out.data, dat, 8);
+
+  MCP2515::ERROR err = Can_A.sendMessage(&out);
+  if (err == MCP2515::ERROR_OK) {
+    mcpTxOk++;
+    portENTER_CRITICAL(&blinkAMux);
+    autoArmed = false;
+    autoPendingDir = 0;
+    autoFireAt = 0;
+    lastReqDir = 0;
+    oneShotTurn = STALK_IDLE;
+    oneShotUntil = 0;
+    activeTurn = STALK_IDLE;
+    laneChangeCancelCount++;
+    portEXIT_CRITICAL(&blinkAMux);
+  } else {
+    mcpTxFail++;
+  }
+}
+
+static void sendLaneChangeSnooze3fd() {
+  bool ap;
+  uint8_t dat[8] = {0};
+  bool haveTemplate;
+
+  portENTER_CRITICAL(&stateMux);
+  ap = gateAPActive;
+  portEXIT_CRITICAL(&stateMux);
+
+  if (!ap)
+    return;
+
+  portENTER_CRITICAL(&blinkAMux);
+  haveTemplate = seen3fdMux1;
+  if (haveTemplate) memcpy(dat, realRaw3fdMux1, 8);
+  portEXIT_CRITICAL(&blinkAMux);
+
+  if (!haveTemplate)
+    return;
+
+  // 0x3FD mux1: UI_ulcSnooze = bit 36 = 1.
+  setBit(dat, 36, true);
+
+  twai_message_t out = {};
+  out.identifier = 0x3FD;
+  out.data_length_code = 8;
+  out.flags = 0;
+  memcpy(out.data, dat, 8);
+
+  if (!twaiNonSummonAdmissionOpen()) {
+    snoozeTxFail++;
+    return;
+  }
+
+  esp_err_t err = twai_transmit(&out, 0);
+  if (err == ESP_OK) {
+    snoozeTxOk++;
+  } else {
+    snoozeTxFail++;
+  }
+}
+
+static void handle102LaneChangeCancel(const uint8_t *data, uint8_t dlc) {
+  if (dlc < 4) return;
+
+  // VCLEFT_frontIntSwitchPressed: bit 31, little-endian numbering.
+  const bool pressed = ((data[31 / 8] >> (31 % 8)) & 0x01u) != 0;
+
+  bool previous;
+  portENTER_CRITICAL(&blinkAMux);
+  previous = laneChangeButtonPressed;
+  laneChangeButtonPressed = pressed;
+  if (pressed) laneChangeButtonRx++;
+  portEXIT_CRITICAL(&blinkAMux);
+
+  // Only the rising edge during an active DAS lane-change behavior
+  // triggers 0x3FD mux1 UI_ulcSnooze = 1.
+  if (!pressed || previous) return;
+
+  const uint8_t behavior = visualBehaviorType;
+  if (behavior != 2 && behavior != 3) return; // LEFT / RIGHT lane change
+
+  sendLaneChangeSnooze3fd();
+}
+
 static void canTaskMcp(void* arg) {
   Serial.println("[CAN A] MCP2515 task started");
   for (;;) {
@@ -1713,6 +1892,12 @@ static void canTaskMcp(void* arg) {
       bootCaptureObservePartyFrame((uint16_t)(rxf.can_id & 0x7FF), rxf.can_dlc, rxf.data);
       if (((rxf.can_id & 0x7FF) == LEFTSTALK_ID) && rxf.can_dlc >= 3) {
         handle249OnCanA(rxf.data, rxf.can_dlc);
+      }
+      if ((rxf.can_id & 0x7FF) == 0x247 && rxf.can_dlc >= 8) {
+        handle247OnCanA(rxf.data, rxf.can_dlc);
+      }
+      if ((rxf.can_id & 0x7FF) == 0x102 && rxf.can_dlc >= 4) {
+        handle102LaneChangeCancel(rxf.data, rxf.can_dlc);
       }
     }
 
@@ -1779,6 +1964,14 @@ static void canTaskTwai(void* arg) {
       canRxBeat++;
       lastCanFrameMs = millis();
       bootCaptureObserveVhFrame(f.identifier, f.data_length_code);
+
+      // Keep the latest real 0x3FD mux1 frame as a template for AP/ALC snooze.
+      if (f.identifier == 0x3FD && f.data_length_code >= 8 && readMuxID(f.data) == 1) {
+        portENTER_CRITICAL(&blinkAMux);
+        memcpy(realRaw3fdMux1, f.data, 8);
+        seen3fdMux1 = true;
+        portEXIT_CRITICAL(&blinkAMux);
+      }
 
       switch (f.identifier) {
         // Universal routing: DAS_visualDebug and Summon status frames are on CAN B.
