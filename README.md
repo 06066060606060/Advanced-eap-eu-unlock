@@ -87,6 +87,9 @@ https://discord.gg/euPbYG8Npc
 > **Support the project:**  
 > [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/mickymurcid)
 
+Bitcoin: bc1pl9nuyhqd78gjc2wdcqr39de7qwtff732ngr28vy8r2sxfa7a6uzsrhe387
+Lightning: ₿cakegrip53@phoenixwallet.me
+
 
 ## Credits
 
