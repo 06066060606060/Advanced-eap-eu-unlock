@@ -189,7 +189,7 @@ https://discord.gg/euPbYG8Npc
 
 ### ☕ Support the Project
 
-[Buy Me a Coffee](https://buymeacoffee.com/mickymurcid)
+<a href="https://www.buymeacoffee.com/xbmod" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
 
 ### ₿ Bitcoin
 
