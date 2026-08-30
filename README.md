@@ -1,123 +1,216 @@
-# Advanced EAP & EU-Unlock V2.5c for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V2.5c
+### Unified firmware for LilyGO / T-2Can
 
-> ⚠️ Research / educational firmware only.
+> ⚠️ **Research / educational firmware only**
 >
-> This project interacts with a Tesla vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.It sends signals directly to the controller, not a physical command to the steering wheel. Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk. You are responsible for your own testing, wiring, configuration, and local laws.
+> This project interacts with a Tesla vehicle CAN bus. It is intended for controlled bench testing, code review, and research environments only.
+>
+> It sends signals directly to the controller, not a physical command to the steering wheel. **Do not use this on public roads or in any situation where unsafe behavior could put people or property at risk.**
+>
+> You are responsible for your own testing, wiring, configuration, and compliance with local laws.
+
+> ⚠️ **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
+
+### CAN Bus Configuration
+
+- **CAN A — Body CAN** → Advanced EAP
+- **CAN B — Chassis CAN** → EU Summon Unlock
+
 ---
-⚠️ you will need another esp32 for Nag-Killer on party CAN.
 
-CAN A Body CAN → Advanced EAP  
-CAN B Chassis CAN → EU Summon Unlock
+## 📋 What's New
 
+### V2.5c
 
-## What Update 2.5c Changes
-- Added TLSSC Restore for banned car
-- added blindspot aggressiveness settings (madmax)
-- added ability to cancel lane change request using open door button
+- Added **TLSSC Restore** for banned cars.
+- Added **Blindspot aggressiveness** settings (`MadMax`).
+- Added the ability to **cancel a lane-change request using the open-door button**.
 
+### V2.0b
 
-----------update 2.0b------------------
-- completly reworked code 
-- New dashboard design by LP_YL
-- toggle to activate Auto lane change in AP/NOA or NOA only
-- Summon TX Priority state machine
-- TLSSC injection with an AP-active-only gate
-- CAN A/B self-healing and Hard Reinitialize
-- Runtime and boot timing diagnostics
+- Completely reworked code.
+- New dashboard design by **LP_YL**.
+- Toggle to activate **Auto Lane Change** in:
+  - AP / NOA
+  - NOA only
+- Summon TX Priority state machine.
+- TLSSC injection with an **AP-active-only gate**.
+- CAN A/B self-healing and hard reinitialization.
+- Runtime and boot timing diagnostics.
 
+---
 
------------------Advanced EAP----------------  
-- automatically activates the turn signal (delay can be set on the dashboard)  
-- All lane change safety features are maintained.  
-- the turn signal start only when the vehicle request a lane change,  
-- you can always cancel on screen or with opposite turn signal.  
+## 🚗 Advanced EAP
 
---------------------EU Unlock------------------
-- bypass R79 EU restriction in AP
-- Expend summon to +/-  85m
-- expanded lateral acceleration limits
-- lane changes near forks isn't disabled (EAP)
-- instantaneous lane change on blinker (EAP)
-- no lane change timeout once initiated (EAP)
-- takes forks and exits automatically (EAP)
-- toggle to activate TLSSC where it is not available. (you need a valid FSD subscription)
-- Continue on Green with Car in Front (TLSSC)
-- OTA Update
+- Automatically activates the turn signal.
+  - Delay can be configured from the dashboard.
+- All lane-change safety features are maintained.
+- The turn signal starts only when the vehicle requests a lane change.
+- Lane changes can always be cancelled:
+  - On screen.
+  - With the opposite turn signal.
+  - Using the open-door button.
 
-## Branch for Model YL
-- https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL  
+---
 
+## 🇪🇺 EU Unlock
 
-  <img width="270" height="475" alt="641723735-89c3b65e-4166-4c1a-ba6c-76c84b55db34" src="https://github.com/user-attachments/assets/98c1d6aa-3649-4669-b88b-619103429297" />
+- Bypass **R79 EU restriction** in AP.
+- Expand Summon range to **±85 m**.
+- Expanded lateral acceleration limits.
+- Lane changes near forks are not disabled (EAP).
+- Instantaneous lane change on blinker (EAP).
+- No lane-change timeout once initiated (EAP).
+- Automatically takes forks and exits (EAP).
+- Toggle to activate **TLSSC** where it is not available.
+  - A valid **EAP/FSD subscription** is required.
+- Continue on Green with Car in Front (**TLSSC**).
+- OTA update support.
 
+---
 
-## Hardware Target
+## 🚙 Model YL Branch
 
-This fork was adapted for:
+A dedicated branch is available for **Model YL**:
 
-| Device                       | Can Transceiver                 | CAN RX / CAN TX   | Can Bus      | Power                     |
-| ---------------------------- | ------------------------------- | ----------------- | ------------ | ------------------------- |
-| LilyGO/T-2Can                |CAN A Body CAN → Advanced EAP    |                   |              |                           |
-|                              |CAN B Chassis CAN → Summon Unlock|                   | 500 kbps CAN | USB-C or stable 12V supply|
+https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
 
-Don't forget to remove the two 120-ohm resistors which can cause signal errors.   
+<img width="270" height="475" alt="Advanced EAP" src="https://github.com/user-attachments/assets/98c1d6aa-3649-4669-b88b-619103429297" />
+
+---
+
+## 🔧 Hardware Target
+
+This fork was adapted for the **LilyGO / T-2Can**.
+
+| Device | CAN Interface | CAN Bus | Function | Power |
+|---|---|---|---|---|
+| LilyGO / T-2Can | CAN A — MCP2515 | Body CAN | Advanced EAP  | 
+| LilyGO / T-2Can | CAN B — TWAI | Chassis CAN | Summon Unlock | USB-C or stable 12 V |
+
+**CAN speed:** 500 kbps
+
+### ⚠️ 120 Ω Resistors
+
+Don't forget to remove the two **120-ohm resistors**, which can cause signal errors.
+
 <img width="407" height="180" alt="LILYGO-T-2CAN_9" src="https://github.com/user-attachments/assets/0d272b7e-bd82-408f-9ca1-239e6dab44d5" />
 
 ---
 
-## Board Setup (Arduino IDE)  
-- Board: LilyGo T-Display S3 
+## 🛠️ Board Setup — Arduino IDE
 
-## Libraries needed:  
-- ESP32 BLE Arduino (built-in)  
-- mcp2515 by autowp (install via Library Manager)  
-https://github.com/autowp/arduino-mcp2515
+### Board
 
-## Files in sketch folder:
-- EU-Advanced-EAP.ino  
-- index_html.h  
-- pin_config.h
+- **LilyGo T-Display S3**
 
-## Confirmed working
-- AP Injection doesn't work before 2026.20
-- MODEL Y 2024 HW4  (Berlin) Firmware 2026.26.1
+### Required Libraries
 
+- **ESP32 BLE Arduino** — built-in.
+- **MCP2515 by autowp** — install via the Arduino Library Manager.
+- Repository: https://github.com/autowp/arduino-mcp2515
 
-## Wiring
-- CAN A (MCP2515): connect to the Body CAN bus - Nag Killer (9-10)
-- CAN B (TWAI): connect to the Chassis CAN bus - Summon Unlock (13-14)
+---
 
-## Dashboard Notes
+## 📁 Sketch Files
 
-- The Wifi AP name will be something like T2CAN-A1B2 (password: 12345678).  
-- Open 192.168.4.1 in a browser.  
-- Use the tabs to switch between Advanced EAP and Summon Unlock.  
-⚠️ Do not enable TLSSC if you do not have the EAP option.
+The sketch folder contains:
 
-## Build firmware using arduino IDE for OTA
-- Open Sketch > Export Compiled Binary.
-- Open /EU-Advanced-EAP/build/ folder
-- Upload EU-Advanced-EAP.ino.bin (+/- 900Ko) using the web dashboard & Update
----  
+```text
+EU-Advanced-EAP.ino
+index_html.h
+pin_config.h
+```
 
-## Discord server: 
+---
+
+## ✅ Confirmed Working
+
+| Vehicle / Firmware | Status |
+|---|---|
+| AP Injection | Does not work before **2026.20** |
+| Model Y | **2024 HW4 — Berlin** |
+| Firmware | **2026.26.1** |
+
+---
+
+## 🔌 Wiring
+
+| Interface | Transceiver | Vehicle CAN Bus | Function |
+|---|---|---|---|
+| **CAN A** | MCP2515 | Body CAN (9–10) | Advanced EAP   |
+| **CAN B** | TWAI | Chassis CAN (13–14) | Summon Unlock |
+
+---
+
+## 🌐 Dashboard
+
+After boot, connect to the ESP32 Wi-Fi access point.
+
+| Parameter | Value |
+|---|---|
+| **SSID** | `T2CAN-A1B2` — example |
+| **Password** | `12345678` |
+| **Dashboard** | `http://192.168.4.1` |
+
+> ⚠️ **TLSSC warning:** Do not enable TLSSC if you do not have the EAP option.
+
+---
+
+## 📡 OTA Firmware Update
+
+Build the firmware using **Arduino IDE**:
+
+1. Open the sketch in Arduino IDE.
+2. Select:
+   **Sketch → Export Compiled Binary**
+3. Open:
+   ```text
+   /EU-Advanced-EAP/build/
+   ```
+4. Locate:
+   ```text
+   EU-Advanced-EAP.ino.bin
+   ```
+   *(approximately 900 KB)*
+5. Open the web dashboard.
+6. Go to **Update** and upload the `.bin` file.
+
+---
+
+## 💬 Community & Support
+
+### Discord
+
+Join the project Discord server:
+
 https://discord.gg/euPbYG8Npc
 
-> **Support the project:**  
-> [![Buy Me A Coffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://buymeacoffee.com/mickymurcid)  
-
-Bitcoin: bc1pl9nuyhqd78gjc2wdcqr39de7qwtff732ngr28vy8r2sxfa7a6uzsrhe387  
-Lightning: ₿cakegrip53@phoenixwallet.me
+---
 
 
-## Credits
+### ☕ Support the Project
 
-- Inspired by `Ev Open Can Mod` https://github.com/ev-open-can-tools/ev-open-can-tools
-- Created by X₿mod updated by LP_YL
-- ESP32 TWAI driver by Espressif Systems
-- Automotive CAN research community
+[Buy Me a Coffee](https://buymeacoffee.com/mickymurcid)
 
+### ₿ Bitcoin
 
+```text
+bc1pl9nuyhqd78gjc2wdcqr39de7qwtff732ngr28vy8r2sxfa7a6uzsrhe387
+```
 
+### ⚡ Lightning
 
+```text
+₿cakegrip53@phoenixwallet.me
+```
 
+---
+
+## 🙏 Credits
+
+- Inspired by **Ev Open Can Mod**  
+  https://github.com/ev-open-can-tools/ev-open-can-tools
+- Created by **X₿mod**, updated by **LP_YL**.
+- ESP32 TWAI driver by **Espressif Systems**.
+- Automotive CAN research community.
