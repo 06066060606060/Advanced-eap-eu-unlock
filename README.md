@@ -1,4 +1,4 @@
-# Advanced EAP & EU-Unlock V2.0b for LilyGO/T-2Can  
+# Advanced EAP & EU-Unlock V2.5c for LilyGO/T-2Can  
 
 > ⚠️ Research / educational firmware only.
 >
@@ -10,7 +10,13 @@ CAN A Body CAN → Advanced EAP
 CAN B Chassis CAN → EU Summon Unlock
 
 
-## What Update 2.0b Changes
+## What Update 2.5c Changes
+- Added TLSSC Restore for banned car
+- added blindspot aggressiveness settings (madmax)
+- added ability to cancel lane change request using open door button
+
+
+----------update 2.0b------------------
 - completly reworked code 
 - New dashboard design by LP_YL
 - toggle to activate Auto lane change in AP/NOA or NOA only
