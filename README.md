@@ -75,8 +75,6 @@ A dedicated branch is available for **Model YL**:
 
 https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
 
-<img width="270" height="475" alt="Advanced EAP" src="https://github.com/user-attachments/assets/98c1d6aa-3649-4669-b88b-619103429297" />
-
 ---
 
 ## 🔧 Hardware Target
@@ -213,3 +211,7 @@ bc1pl9nuyhqd78gjc2wdcqr39de7qwtff732ngr28vy8r2sxfa7a6uzsrhe387
 - Created by **X₿mod**, updated by **LP_YL**.
 - ESP32 TWAI driver by **Espressif Systems**.
 - Automotive CAN research community.
+
+## 📸 Dashboard
+
+<img width="270" height="475" alt="Advanced EAP" src="https://github.com/user-attachments/assets/98c1d6aa-3649-4669-b88b-619103429297" />
