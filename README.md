@@ -24,7 +24,7 @@
 
 ### V2.5c
 
-- Added **TLSSC Restore** for banned cars.
+- Added **TLSSC Restore** for banned cars.   (DO NOT APPLY ON NON BANNED CAR)
 - Added **Blindspot aggressiveness** settings (`MadMax`).
 - Added the ability to **cancel a lane-change request using the open-door button**.
 
