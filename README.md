@@ -9,9 +9,9 @@
 >
 > You are responsible for your own testing, wiring, configuration, and compliance with local laws.
 
-> ⚠️ **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
+>  **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
 
-> ⚠️ Do not activate TLSSC if you do not have an FSD subscription. it seems there is a high risk of being banned. 
+## ⚠️ Do not activate TLSSC if you do not have an FSD subscription. there is a high risk of being banned. 
 
 ### CAN Bus Configuration
 
