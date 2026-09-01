@@ -11,6 +11,8 @@
 
 > ⚠️ **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
 
+> ⚠️ Do not activate TLSSC if you do not have an FSD subscription. it seems there is a high risk of being banned. 
+
 ### CAN Bus Configuration
 
 - **CAN A — Body CAN** → Advanced EAP
