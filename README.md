@@ -11,7 +11,7 @@
 
 >  **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
 
-### ⚠️ Do not activate TLSSC if you do not have an FSD subscription. high risk of being banned. 
+### ⚠️ DO NOT APPLY TLSSC RESTORE ON NON BANNED CAR (you will be banned instantly)
 
 ### CAN Bus Configuration
 
@@ -24,7 +24,7 @@
 
 ### V2.5c
 
-- Added **TLSSC Restore** for banned cars.   (DO NOT APPLY ON NON BANNED CAR)
+- Added **TLSSC Restore** for banned cars.  
 - Added **Blindspot aggressiveness** settings (`MadMax`).
 - Added the ability to **cancel a lane-change request using the open-door button**.
 
