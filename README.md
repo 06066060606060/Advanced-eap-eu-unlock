@@ -1,4 +1,4 @@
-# Advanced EAP & EU-Unlock V2.5c
+# Advanced EAP & EU-Unlock V2.6.0
 ### Unified firmware for LilyGO / T-2Can
 
 > ⚠️ **Research / educational firmware only**
@@ -22,23 +22,11 @@
 
 ## 📋 What's New
 
-### V2.5c
-
-- Added **TLSSC Restore** for banned cars.  
-- Added **Blindspot aggressiveness** settings (`MadMax`).
-- Added the ability to **cancel a lane-change request using the open-door button**.
-
-### V2.0b
-
-- Completely reworked code.
-- New dashboard design by **LP_YL**.
-- Toggle to activate **Auto Lane Change** in:
-  - AP / NOA
-  - NOA only
-- Summon TX Priority state machine.
-- TLSSC injection with an **AP-active-only gate**.
-- CAN A/B self-healing and hard reinitialization.
-- Runtime and boot timing diagnostics.
+### V2.6.0
+- Includes an updated summon logic for much better stability. (500ms echo)
+- Support for stalkless car compatibility (selectable on the dashboard) thanks @Frizull
+- Bus status now show if data is being detected on the CAN bus (usefull to check correct wiring)
+- Fix CAN recovery loop on CAN B when parked
 
 ---
 
