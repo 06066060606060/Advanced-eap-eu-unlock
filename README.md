@@ -11,7 +11,7 @@
 
 >  **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
 
-### ⚠️ DO NOT APPLY TLSSC RESTORE ON NON BANNED CAR (you will be banned instantly)
+### ⚠️ DO NOT ACTIVATE TLSSC RESTORE ON NON BANNED CAR (you will be banned instantly)
 
 ### CAN Bus Configuration
 
