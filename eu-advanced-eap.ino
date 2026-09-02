@@ -1,6 +1,6 @@
 // T2CAN Unified - Dual CAN (MCP2515 + TWAI) for all vehicle models
 //
-// CAN A (MCP2515) -> 0x249 RX/TX only
+// CAN A (MCP2515) -> 0x249 RX/TX + 0x3C2 stalkless RX/TX
 // CAN B (TWAI)    -> all other application traffic (including 0x3F8 / 0x3FD)
 
 #include <Arduino.h>
@@ -13,7 +13,7 @@
 #include "driver/twai.h"
 #include "index_html.h"
 
-#define FW_VERSION "ADV-EAP-EU-UNLOCK-v2.5c"
+#define FW_VERSION "ADV-EAP-EU-UNLOCK-v2.6.0"
 
 // T-2CAN board specific
 #include "pin_config.h"
@@ -271,6 +271,10 @@ static volatile bool seen3fdMux1 = false;
 static uint8_t realRaw3fdMux1[8] = {0};
 static volatile uint32_t snoozeTxOk = 0;
 static volatile uint32_t snoozeTxFail = 0;
+static volatile uint32_t summonPeriodicTxOk = 0;
+static volatile uint32_t summonPeriodicTxFail = 0;
+static volatile uint32_t lastSummonPeriodicTxMs = 0;
+#define SUMMON_PERIODIC_TX_MS 500																							  
 static volatile bool gateAPActive  = false;
 static volatile bool gateNOAActive = false;   // raw DAS_autopilotState == ACTIVE_NAV (5)
 static volatile uint8_t dasAutopilotState4 = 0xFF; // low nibble of Party-CAN 0x399 byte0
@@ -349,11 +353,12 @@ static volatile uint32_t sumRx1016   = 0;
 static char gateBlockReason[48] = "boot";
 // ═══════════════════════════════════════════════════════════════
 // ADVANCED EAP — UNIVERSAL ROUTING
-//   CAN A / MCP2515 : 0x249 RX/TX + 0x102 RX + 0x247 TX (Body CAN)
+//   CAN A / MCP2515 : 0x249 or 0x3C2 RX/TX + 0x102 RX + 0x247 TX (Body CAN)
 //   CAN B / TWAI    : DAS visual debug (0x24A), 0x3F8, 0x3FD and Summon traffic
 // ═══════════════════════════════════════════════════════════════
 
 #define LEFTSTALK_ID      0x249
+#define VCLEFT_SWITCH_ID  0x3C2
 #define VISUAL_DEBUG_ID   0x24A
 #define DRIVER_ASSIST_ID  0x3F8
 
@@ -364,6 +369,22 @@ static char gateBlockReason[48] = "boot";
 #define BLINKA_TX_PERIOD_MS         20
 #define BLINKA_PULSE_MS             350
 #define BLINKA_AUTO_DELAY_DEFAULT_MS 2000
+#define BLINKA_SOURCE_FRESH_MS       500
+#define BLINKA_STALKLESS_PRESS_MS    300
+#define BLINKA_STALKLESS_RELEASE_MS  200
+#define BLINKA_PHYSICAL_DISPLAY_MS  1500
+
+#define BLINKA_TRANSPORT_NONE        0
+#define BLINKA_TRANSPORT_249         1
+#define BLINKA_TRANSPORT_3C2         2
+
+// Selected Auto Blinker turn-signal transport. Stalk (0x249) is the default.
+static volatile uint8_t blinkATransportMode = BLINKA_TRANSPORT_249;
+
+#define VCLEFT_SWITCH_MUX1           1
+#define VCLEFT_SWITCH_SNA            0
+#define VCLEFT_SWITCH_OFF            1
+#define VCLEFT_SWITCH_ON             2
 
 // Auto Blinker operating mode:
 
@@ -374,6 +395,7 @@ static volatile uint8_t realTurn = 0;
 static volatile uint8_t realCksum = 0;
 static volatile bool cksumSelfTest = true;
 static volatile bool seen249 = false;
+static volatile uint32_t last249Ms = 0;
 static volatile uint8_t blinkACounter = 0;
 static volatile uint8_t realDlc = 0;
 static uint8_t realRaw249[8] = {0};
@@ -389,12 +411,31 @@ static volatile uint8_t lastReqDir = 0;
 // pending trigger, but must not truncate an already-started 350 ms pulse.
 static volatile uint8_t oneShotTurn = STALK_IDLE;
 static volatile uint32_t oneShotUntil = 0;
+static volatile uint32_t oneShotReleaseAt = 0;
+static volatile uint8_t blinkATransport = BLINKA_TRANSPORT_NONE;
 static volatile uint8_t autoPendingDir = 0;
 static volatile uint32_t blinkADelayMs = BLINKA_AUTO_DELAY_DEFAULT_MS;
 static volatile uint32_t autoFireAt = 0;
 static volatile bool autoArmed = false;
 static volatile uint32_t blkATxOk = 0;
 static volatile uint32_t blkATxFail = 0;
+
+// Highland / stalkless diagnostics and native-cadence injection.
+// Verified in a passive capture on a 2024 Shanghai Model 3 Highland:
+//   0x3C2 mux1, left button  = bits 30..31 (byte 3 bits 6..7)
+//   0x3C2 mux1, right button = bits 44..45 (byte 5 bits 4..5)
+//   2 = SWITCH_ON, 1 = SWITCH_OFF, 0 = SWITCH_SNA/idle.
+static volatile bool seen3C2 = false;
+static volatile uint32_t rx3C2 = 0;
+static volatile uint32_t last3C2Mux1Ms = 0;
+static volatile uint8_t real3C2LeftButton = VCLEFT_SWITCH_SNA;
+static volatile uint8_t real3C2RightButton = VCLEFT_SWITCH_SNA;
+static volatile uint8_t stalklessLastPhysicalTurn = STALK_IDLE;
+static volatile uint32_t stalklessLastPhysicalPressMs = 0;
+static volatile uint32_t stalklessPhysicalPressCount = 0;
+static volatile uint32_t stalklessTxOk = 0;
+static volatile uint32_t stalklessTxFail = 0;
+static volatile uint32_t stalklessManualOverride = 0;
 
 // CAN B telemetry used by the auto blinker (0x24A).
 static volatile uint8_t visualBehaviorType = 0;
@@ -710,6 +751,7 @@ static void handle249OnCanA(const uint8_t *data, uint8_t dlc) {
   realCksum = ck;
   cksumSelfTest = checksumComparable && (predicted == ck);
   seen249 = true;
+  last249Ms = (uint32_t)millis();
   if (activeTurn == STALK_IDLE) blinkACounter = cnt;
   portEXIT_CRITICAL(&blinkAMux);
 }
@@ -756,6 +798,122 @@ static void sendStalkFrameCanA(uint8_t turn) {
     mcpTxFailConsecutive = 0;
   } else {
     blkATxFail++;
+    mcpTxFail++;
+    if (mcpTxFailConsecutive < 255) mcpTxFailConsecutive++;
+  }
+  portEXIT_CRITICAL(&blinkAMux);
+}
+
+static inline uint8_t vcleftMux(const uint8_t data[8]) {
+  return data[0] & 0x03u;
+}
+
+static inline uint8_t vcleftLeftButton(const uint8_t data[8]) {
+  return (data[3] >> 6) & 0x03u;
+}
+
+static inline uint8_t vcleftRightButton(const uint8_t data[8]) {
+  return (data[5] >> 4) & 0x03u;
+}
+
+static inline void vcleftSetLeftButton(uint8_t data[8], uint8_t state) {
+  data[3] = (uint8_t)((data[3] & 0x3Fu) | ((state & 0x03u) << 6));
+}
+
+static inline void vcleftSetRightButton(uint8_t data[8], uint8_t state) {
+  data[5] = (uint8_t)((data[5] & 0xCFu) | ((state & 0x03u) << 4));
+}
+
+// Observe the real stalkless steering-wheel switch frame and, only during an
+// already-armed Auto Blinker one-shot, echo the live mux1 payload with the
+// requested turn button changed. 0x3C2 has no rolling counter or checksum;
+// using each newly received stock frame preserves every unrelated switch bit
+// and keeps the injection at the native mux1 cadence (~10 Hz on the captured
+// Highland) instead of generating a free-running synthetic stream.
+static void handle3C2OnCanA(const struct can_frame &incoming) {
+  if (incoming.can_dlc < 8 || vcleftMux(incoming.data) != VCLEFT_SWITCH_MUX1) return;
+
+  const uint32_t now = (uint32_t)millis();
+  const uint8_t left = vcleftLeftButton(incoming.data);
+  const uint8_t right = vcleftRightButton(incoming.data);
+  bool inject = false;
+  bool firstStalklessFrame = false;
+  uint8_t turn = STALK_IDLE;
+  uint8_t switchState = VCLEFT_SWITCH_SNA;
+
+  portENTER_CRITICAL(&blinkAMux);
+  firstStalklessFrame = !seen3C2;
+  const uint8_t previousLeft = real3C2LeftButton;
+  const uint8_t previousRight = real3C2RightButton;
+  seen3C2 = true;
+  rx3C2++;
+  last3C2Mux1Ms = now;
+  real3C2LeftButton = left;
+  real3C2RightButton = right;
+
+  // Latch rising edges long enough for the 500 ms dashboard polling cycle.
+  // The physical ON phase measured on the Highland lasts only ~300 ms and
+  // could otherwise begin and end entirely between two HTTP responses.
+  if (left == VCLEFT_SWITCH_ON && previousLeft != VCLEFT_SWITCH_ON) {
+    stalklessLastPhysicalTurn = STALK_DOWN_1;
+    stalklessLastPhysicalPressMs = now;
+    stalklessPhysicalPressCount++;
+  }
+  if (right == VCLEFT_SWITCH_ON && previousRight != VCLEFT_SWITCH_ON) {
+    stalklessLastPhysicalTurn = STALK_UP_1;
+    stalklessLastPhysicalPressMs = now;
+    stalklessPhysicalPressCount++;
+  }
+
+  // A real steering-wheel press always wins over an automatic request.
+  // The frame read here is the stock frame, before our echo is generated.
+  if (blinkATransportMode == BLINKA_TRANSPORT_3C2 &&
+      (left == VCLEFT_SWITCH_ON || right == VCLEFT_SWITCH_ON) &&
+      (autoArmed ||
+       (blinkATransport == BLINKA_TRANSPORT_3C2 && oneShotTurn != STALK_IDLE))) {
+    autoArmed = false;
+    autoPendingDir = 0;
+    autoFireAt = 0;
+    blinkATransport = BLINKA_TRANSPORT_NONE;
+    oneShotTurn = STALK_IDLE;
+    oneShotUntil = 0;
+    oneShotReleaseAt = 0;
+    activeTurn = STALK_IDLE;
+    stalklessManualOverride++;
+  } else if (blinkATransport == BLINKA_TRANSPORT_3C2 &&
+             oneShotTurn != STALK_IDLE &&
+             (int32_t)(oneShotUntil - now) > 0) {
+    inject = true;
+    turn = oneShotTurn;
+    switchState = ((int32_t)(oneShotReleaseAt - now) > 0)
+                    ? VCLEFT_SWITCH_ON : VCLEFT_SWITCH_OFF;
+  }
+  portEXIT_CRITICAL(&blinkAMux);
+
+  if (firstStalklessFrame) {
+    Serial.println("[CAN A] stalkless 0x3C2 mux1 detected");
+  }
+  if (!inject) return;
+
+  struct can_frame out = incoming;
+  if (turn == STALK_DOWN_1) {
+    vcleftSetLeftButton(out.data, switchState);
+  } else if (turn == STALK_UP_1) {
+    vcleftSetRightButton(out.data, switchState);
+  } else {
+    return;
+  }
+
+  const MCP2515::ERROR err = Can_A.sendMessage(&out);
+  portENTER_CRITICAL(&blinkAMux);
+  if (err == MCP2515::ERROR_OK) {
+    blkATxOk++;
+    stalklessTxOk++;
+    mcpTxOk++;
+    mcpTxFailConsecutive = 0;
+  } else {
+    blkATxFail++;
+    stalklessTxFail++;
     mcpTxFail++;
     if (mcpTxFailConsecutive < 255) mcpTxFailConsecutive++;
   }
@@ -810,6 +968,7 @@ static void blinkATxTick() {
   static uint32_t lastTxMs = 0;
   uint32_t now = millis();
   uint8_t turn = STALK_IDLE;
+  uint8_t transport = BLINKA_TRANSPORT_NONE;
   const bool gateOpen = autoBlinkerGateOpen(now);
 
   portENTER_CRITICAL(&blinkAMux);
@@ -827,7 +986,37 @@ static void blinkATxTick() {
   // 1) Delayed trigger reached its deadline -> start an independent pulse.
   if (gateOpen && autoArmed && (int32_t)(now - autoFireAt) >= 0) {
     oneShotTurn = dirToTurn(autoPendingDir);
-    oneShotUntil = (oneShotTurn != STALK_IDLE) ? (now + BLINKA_PULSE_MS) : 0;
+
+    const bool fresh249 = seen249 && realDlc >= 4 && cksumSelfTest &&
+                          last249Ms != 0 &&
+                          (uint32_t)(now - last249Ms) <= BLINKA_SOURCE_FRESH_MS;
+    const bool fresh3C2 = seen3C2 && last3C2Mux1Ms != 0 &&
+                          (uint32_t)(now - last3C2Mux1Ms) <= BLINKA_SOURCE_FRESH_MS;
+
+    if (oneShotTurn == STALK_IDLE) {
+      blinkATransport = BLINKA_TRANSPORT_NONE;
+      oneShotUntil = 0;
+      oneShotReleaseAt = 0;
+    } else if (blinkATransportMode == BLINKA_TRANSPORT_249 && fresh249) {
+      // Stalk mode: use the real 0x249 SCCM stalk frame as the template.
+      blinkATransport = BLINKA_TRANSPORT_249;
+      oneShotReleaseAt = 0;
+      oneShotUntil = now + BLINKA_PULSE_MS;
+    } else if (blinkATransportMode == BLINKA_TRANSPORT_3C2 && fresh3C2) {
+      // Stalkless mode: hold SWITCH_ON for the measured gesture, then
+      // SWITCH_OFF, using each real 0x3C2 mux1 frame as the native template.
+      blinkATransport = BLINKA_TRANSPORT_3C2;
+      oneShotReleaseAt = now + BLINKA_STALKLESS_PRESS_MS;
+      oneShotUntil = oneShotReleaseAt + BLINKA_STALKLESS_RELEASE_MS;
+    } else {
+      // Fail closed when neither a valid stalk template nor a fresh stalkless
+      // switch frame is available. Count the failed request once, not at 50 Hz.
+      blinkATransport = BLINKA_TRANSPORT_NONE;
+      oneShotTurn = STALK_IDLE;
+      oneShotUntil = 0;
+      oneShotReleaseAt = 0;
+      blkATxFail++;
+    }
     autoArmed = false;
     autoPendingDir = 0;
     autoFireAt = 0;
@@ -837,15 +1026,20 @@ static void blinkATxTick() {
   //    subsequent behaviorType changes.
   if (oneShotTurn != STALK_IDLE && (int32_t)(oneShotUntil - now) > 0) {
     turn = oneShotTurn;
+    transport = blinkATransport;
   } else {
     oneShotTurn = STALK_IDLE;
     oneShotUntil = 0;
+    oneShotReleaseAt = 0;
+    blinkATransport = BLINKA_TRANSPORT_NONE;
   }
 
   activeTurn = turn;
   portEXIT_CRITICAL(&blinkAMux);
 
   if (turn == STALK_IDLE) return;
+  // 0x3C2 is emitted from canTaskMcp only when a real mux1 frame arrives.
+  if (transport != BLINKA_TRANSPORT_249) return;
   if (now - lastTxMs < BLINKA_TX_PERIOD_MS) return;
   lastTxMs = now;
   sendStalkFrameCanA(turn);
@@ -1046,6 +1240,50 @@ static void handle1016(const uint8_t *data, uint8_t dlc) {
     portEXIT_CRITICAL(&stateMux);
 }
 
+// During SUMMONING only, resend the latest real 0x3FD mux1 frame every 1 s.
+// Preserve the latest received payload and force bit 19=0, bit 47=1.
+static void summonPeriodicTick() {
+    bool summoning;
+    portENTER_CRITICAL(&stateMux);
+    summoning = gateSummoning;
+    portEXIT_CRITICAL(&stateMux);
+
+    if (!summoning)
+        return;
+
+    const uint32_t now = (uint32_t)millis();
+    if (lastSummonPeriodicTxMs != 0 &&
+        (uint32_t)(now - lastSummonPeriodicTxMs) < SUMMON_PERIODIC_TX_MS)
+        return;
+
+    uint8_t dat[8];
+    bool haveTemplate;
+    portENTER_CRITICAL(&blinkAMux);
+    haveTemplate = seen3fdMux1;
+    if (haveTemplate)
+        memcpy(dat, realRaw3fdMux1, 8);
+    portEXIT_CRITICAL(&blinkAMux);
+
+    if (!haveTemplate)
+        return;
+
+    setBit(dat, 19, false);
+    setBit(dat, 47, true);
+
+    twai_message_t out = {};
+    out.identifier = 0x3FD;
+    out.data_length_code = 8;
+    out.flags = 0;
+    memcpy(out.data, dat, 8);
+
+    esp_err_t err = twaiTransmitSummonPriority(&out);
+    if (err == ESP_OK) {
+        summonPeriodicTxOk++;
+        lastSummonPeriodicTxMs = now;
+    } else {
+        summonPeriodicTxFail++;
+    }
+}						
 static void injectSummon(const twai_message_t &src) {
      bool en, gate, fmode;
     portENTER_CRITICAL(&stateMux);
@@ -1163,6 +1401,7 @@ static void summonCfgLoad() {
     tlsscRestoreEnabled = prefs.getBool("tlrst", false);
     blinkAEnabled = prefs.getBool("blkA", true);
     blinkAMode = (uint8_t)constrain((int)prefs.getUInt("blkAMode", BLINKA_MODE_NOA_ONLY), BLINKA_MODE_NOA_ONLY, BLINKA_MODE_AP_NOA);
+    blinkATransportMode = (uint8_t)constrain((int)prefs.getUInt("blkATrans", BLINKA_TRANSPORT_249), BLINKA_TRANSPORT_249, BLINKA_TRANSPORT_3C2);
     ulcBlindSpotInjectConfig = (uint8_t)constrain((int)prefs.getUInt("ulcBspot", 0), 0, 2);
 
     // rev.17 one-time migration: make the new 2.0 s Auto Blinker delay take
@@ -1191,6 +1430,7 @@ static void summonCfgSave() {
     prefs.putBool("tlrst", tlsscRestoreEnabled);
     prefs.putBool("blkA", blinkAEnabled);
     prefs.putUInt("blkAMode", blinkAMode);
+    prefs.putUInt("blkATrans", blinkATransportMode);
     prefs.putUInt("blkADly", blinkADelayMs);
     prefs.putUInt("ulcBspot", ulcBlindSpotInjectConfig);
     prefs.end();
@@ -1294,15 +1534,19 @@ static String blinkAStatsToJson() {
   bool en, ap, noaRaw, noaEffective, noaFresh, fmode;
   uint8_t mode;
   uint8_t dasState4;
-  uint8_t curTurn, pending;
-  uint32_t delayMs, remain, txOk, txFail, r249;
-  bool armed, seen, selfTest;
+  uint8_t curTurn, pending, transport, transportMode, leftButton, rightButton, physicalTurn;
+  uint32_t delayMs, remain, txOk, txFail, r249, r3C2;
+  uint32_t last3C2, physicalPressMs, physicalPressCount;
+  uint32_t sTxOk, sTxFail, manualOverride;
+  bool armed, seen, selfTest, seenStalkless;
   uint8_t rCnt, rTurn, rCk, rDlc;
   uint8_t raw249[8] = {0};
   portENTER_CRITICAL(&blinkAMux);
   en = blinkAEnabled;
   mode = blinkAMode;
   curTurn = activeTurn;
+  transport = blinkATransport;
+  transportMode = blinkATransportMode;
   pending = autoPendingDir;
   delayMs = blinkADelayMs;
   armed = autoArmed;
@@ -1311,6 +1555,17 @@ static String blinkAStatsToJson() {
   txOk = blkATxOk;
   txFail = blkATxFail;
   r249 = rx249;
+  r3C2 = rx3C2;
+  last3C2 = last3C2Mux1Ms;
+  leftButton = real3C2LeftButton;
+  rightButton = real3C2RightButton;
+  physicalTurn = stalklessLastPhysicalTurn;
+  physicalPressMs = stalklessLastPhysicalPressMs;
+  physicalPressCount = stalklessPhysicalPressCount;
+  seenStalkless = seen3C2;
+  sTxOk = stalklessTxOk;
+  sTxFail = stalklessTxFail;
+  manualOverride = stalklessManualOverride;
   rCnt = realCounter;
   rTurn = realTurn;
   rCk = realCksum;
@@ -1329,9 +1584,15 @@ static String blinkAStatsToJson() {
   portEXIT_CRITICAL(&stateMux);
 
   const uint32_t noaNow = (uint32_t)millis();
+  const uint32_t stalklessAgeMs = (last3C2 == 0) ? UINT32_MAX : (uint32_t)(noaNow - last3C2);
+  const uint32_t physicalPressAgeMs = (physicalPressMs == 0) ? UINT32_MAX : (uint32_t)(noaNow - physicalPressMs);
+  const bool physicalPressActive = physicalTurn != STALK_IDLE &&
+                                   physicalPressMs != 0 &&
+                                   physicalPressAgeMs <= BLINKA_PHYSICAL_DISPLAY_MS;
   const uint32_t noaAgeMs = (noaLastMs == 0) ? UINT32_MAX : (uint32_t)(noaNow - noaLastMs);
   noaFresh = (noaLastMs != 0 && noaAgeMs <= NOA_STATUS_FRESH_MS);
   noaEffective = noaRaw && noaFresh;
+  const bool blinkGateOpen = autoBlinkerGateOpen(noaNow);
 
   String s = "{";
   s += "\"enabled\":" + String(en ? "true" : "false");
@@ -1343,6 +1604,7 @@ static String blinkAStatsToJson() {
   s += ",\"noaFresh\":" + String(noaFresh ? "true" : "false");
   s += ",\"noaAgeMs\":" + String((noaAgeMs == UINT32_MAX) ? 999999UL : (unsigned long)noaAgeMs);
   s += ",\"noaFreshLimitMs\":" + String((unsigned long)NOA_STATUS_FRESH_MS);
+  s += ",\"gateOpen\":" + String(blinkGateOpen ? "true" : "false");
   s += ",\"dasState\":" + String((int)dasState4);
   s += ",\"forceMode\":" + String(fmode ? "true" : "false");
   s += ",\"behaviorType\":" + String((int)visualBehaviorType);
@@ -1351,6 +1613,9 @@ static String blinkAStatsToJson() {
   s += ",\"laneChangeButtonRx\":" + String((unsigned long)laneChangeButtonRx);
   s += ",\"laneChangeCancelCount\":" + String((unsigned long)laneChangeCancelCount);
   s += ",\"activeTurn\":" + String(curTurn);
+  s += ",\"transportMode\":" + String((int)transportMode);
+  s += ",\"transportName\":\"" + String(transport == BLINKA_TRANSPORT_249 ? "0x249_STALK" :
+                                                transport == BLINKA_TRANSPORT_3C2 ? "0x3C2_STALKLESS" : "IDLE") + "\"";
   s += ",\"delayMs\":" + String(delayMs);
   s += ",\"autoArmed\":" + String(armed ? "true" : "false");
   s += ",\"autoPending\":" + String(pending);
@@ -1359,6 +1624,20 @@ static String blinkAStatsToJson() {
   s += ",\"txFail\":" + String(txFail);
   s += ",\"rx249\":" + String(r249);
   s += ",\"seen249\":" + String(seen ? "true" : "false");
+  s += ",\"rx3C2\":" + String(r3C2);
+  s += ",\"seen3C2\":" + String(seenStalkless ? "true" : "false");
+  s += ",\"stalklessAgeMs\":" + String((stalklessAgeMs == UINT32_MAX) ? 999999UL : (unsigned long)stalklessAgeMs);
+  s += ",\"stalklessLeftButton\":" + String((int)leftButton);
+  s += ",\"stalklessRightButton\":" + String((int)rightButton);
+  s += ",\"physicalPressActive\":" + String(physicalPressActive ? "true" : "false");
+  s += ",\"physicalTurn\":" + String((int)physicalTurn);
+  s += ",\"physicalTurnName\":\"" + String(physicalTurn == STALK_DOWN_1 ? "LEFT" :
+                                                   physicalTurn == STALK_UP_1 ? "RIGHT" : "IDLE") + "\"";
+  s += ",\"physicalPressAgeMs\":" + String((physicalPressAgeMs == UINT32_MAX) ? 999999UL : (unsigned long)physicalPressAgeMs);
+  s += ",\"physicalPressCount\":" + String((unsigned long)physicalPressCount);
+  s += ",\"stalklessTxOk\":" + String((unsigned long)sTxOk);
+  s += ",\"stalklessTxFail\":" + String((unsigned long)sTxFail);
+  s += ",\"stalklessManualOverride\":" + String((unsigned long)manualOverride);
   s += ",\"realCounter\":" + String(rCnt);
   s += ",\"realTurn\":" + String(rTurn);
   s += ",\"realCksum\":" + String(rCk);
@@ -1398,6 +1677,13 @@ static String systemStatsToJson() {
   s += ",\"uptimeS\":"      + String((millis() - bootTime) / 1000);
   s += ",\"mcpReady\":"     + String(mcpReady  ? "true" : "false");
   s += ",\"twaiReady\":"    + String(twaiReady ? "true" : "false");
+const uint32_t busNow = (uint32_t)millis();
+  const bool mcpTrafficOnline = lastCanAFrameMs != 0 &&
+      (uint32_t)(busNow - lastCanAFrameMs) <= 1500;
+  const bool twaiTrafficOnline = lastCanBFrameMs != 0 &&
+      (uint32_t)(busNow - lastCanBFrameMs) <= 1500;
+  s += ",\"mcpTrafficOnline\":" + String(mcpTrafficOnline ? "true" : "false");
+  s += ",\"twaiTrafficOnline\":" + String(twaiTrafficOnline ? "true" : "false");																											  
   s += ",\"rtcBootCount\":" + String((unsigned long)rtcBootCount);
   s += ",\"runtimeStatsResetCount\":" + String((unsigned long)runtimeStatsResetCount);
   s += ",\"runtimeStatsLastResetMs\":" + String((unsigned long)runtimeStatsLastResetMs);
@@ -1647,9 +1933,35 @@ static void httpBlinkADisable() {
   autoFireAt = 0;
   oneShotTurn = STALK_IDLE;
   oneShotUntil = 0;
+  oneShotReleaseAt = 0;
+  blinkATransport = BLINKA_TRANSPORT_NONE;
   activeTurn = STALK_IDLE;
   lastReqDir = 0;
   portEXIT_CRITICAL(&blinkAMux);
+  summonCfgSave();
+  server.send(200, "application/json", blinkAStatsToJson());
+}
+
+static void httpBlinkATransport() {
+  int v = server.hasArg("transport") ? server.arg("transport").toInt() : BLINKA_TRANSPORT_249;
+  v = constrain(v, BLINKA_TRANSPORT_249, BLINKA_TRANSPORT_3C2);
+
+  portENTER_CRITICAL(&blinkAMux);
+  blinkATransportMode = (uint8_t)v;
+
+  // Changing the transport cancels any pending/active automatic pulse so the
+  // next request starts cleanly on the newly selected CAN frame type.
+  autoArmed = false;
+  autoPendingDir = 0;
+  autoFireAt = 0;
+  lastReqDir = 0;
+  oneShotTurn = STALK_IDLE;
+  oneShotUntil = 0;
+  oneShotReleaseAt = 0;
+  blinkATransport = BLINKA_TRANSPORT_NONE;
+  activeTurn = STALK_IDLE;
+  portEXIT_CRITICAL(&blinkAMux);
+
   summonCfgSave();
   server.send(200, "application/json", blinkAStatsToJson());
 }
@@ -1698,6 +2010,9 @@ static void resetRuntimeStats() {
   sumRxMux1 = 0;
   sumTxOk = 0;
   sumTxFail = 0;
+  summonPeriodicTxOk = 0;
+  summonPeriodicTxFail = 0;
+  lastSummonPeriodicTxMs = 0;						 
   sumRx280 = 0;
   sumRx390 = 0;
   sumRx921 = 0;
@@ -1709,8 +2024,15 @@ static void resetRuntimeStats() {
 
   portENTER_CRITICAL(&blinkAMux);
   rx249 = 0;
+  rx3C2 = 0;
   blkATxOk = 0;
   blkATxFail = 0;
+  stalklessLastPhysicalTurn = STALK_IDLE;
+  stalklessLastPhysicalPressMs = 0;
+  stalklessPhysicalPressCount = 0;
+  stalklessTxOk = 0;
+  stalklessTxFail = 0;
+  stalklessManualOverride = 0;
   portEXIT_CRITICAL(&blinkAMux);
   visualDebugRxCount = 0;
 
@@ -1774,6 +2096,7 @@ static void webTask(void *arg) {
   server.on("/api/blinkA/delay", HTTP_POST, httpBlinkADelay);
   server.on("/api/laneChange/blindspot", HTTP_POST, httpLaneChangeBlindspot);
   server.on("/api/blinkA/mode", HTTP_POST, httpBlinkAMode);
+   server.on("/api/blinkA/transport", HTTP_POST, httpBlinkATransport);
   server.on("/api/das/stats", HTTP_GET, httpDasTelemetryStats);
   server.on("/api/system/stats",  HTTP_GET,  httpSystemStats);
   server.on("/api/system/boot-capture.csv", HTTP_GET, httpBootCaptureCsv);
@@ -1838,6 +2161,8 @@ static void sendLaneChangeSoftAbortingLeft247() {
     lastReqDir = 0;
     oneShotTurn = STALK_IDLE;
     oneShotUntil = 0;
+    oneShotReleaseAt = 0;
+    blinkATransport = BLINKA_TRANSPORT_NONE;
     activeTurn = STALK_IDLE;
     laneChangeCancelCount++;
     portEXIT_CRITICAL(&blinkAMux);
@@ -1934,6 +2259,9 @@ static void canTaskMcp(void* arg) {
       bootCaptureObservePartyFrame((uint16_t)(rxf.can_id & 0x7FF), rxf.can_dlc, rxf.data);
       if (((rxf.can_id & 0x7FF) == LEFTSTALK_ID) && rxf.can_dlc >= 3) {
         handle249OnCanA(rxf.data, rxf.can_dlc);
+      }
+      if (((rxf.can_id & 0x7FF) == VCLEFT_SWITCH_ID) && rxf.can_dlc >= 8) {
+        handle3C2OnCanA(rxf);
       }
       if ((rxf.can_id & 0x7FF) == 0x247 && rxf.can_dlc >= 8) {
         handle247OnCanA(rxf.data, rxf.can_dlc);
@@ -2057,6 +2385,7 @@ static void canTaskTwai(void* arg) {
 
     // Expire PARK_STANDBY if the confirmed gear source becomes stale.
     // SUMMON_FULL uses a short dropout grace before leaving the active session.
+	summonPeriodicTick();								
     refreshSummonPriorityState();
     twaiReadQueueStatus();
     blinkATxTick();
@@ -2295,6 +2624,17 @@ static bool recoveryHardReinitialize(uint8_t reason) {
   portENTER_CRITICAL(&stateMux);
   lastDASStatusMillis = 0;
   portEXIT_CRITICAL(&stateMux);
+  portENTER_CRITICAL(&blinkAMux);
+  autoArmed = false;
+  autoPendingDir = 0;
+  autoFireAt = 0;
+  oneShotTurn = STALK_IDLE;
+  oneShotUntil = 0;
+  oneShotReleaseAt = 0;
+  blinkATransport = BLINKA_TRANSPORT_NONE;
+  activeTurn = STALK_IDLE;
+  lastReqDir = 0;
+  portEXIT_CRITICAL(&blinkAMux);
   bool aOk = recoveryMcpColdInit();
   bool bOk = recoveryTwaiFullReinit();
   bool tasksOk = aOk && bOk && recoveryStartCanTasks();
