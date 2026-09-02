@@ -204,4 +204,5 @@ bc1pl9nuyhqd78gjc2wdcqr39de7qwtff732ngr28vy8r2sxfa7a6uzsrhe387
 
 ## 📸 Dashboard
 
-<img width="270" height="475" alt="Advanced EAP" src="https://github.com/user-attachments/assets/98c1d6aa-3649-4669-b88b-619103429297" />
+<img width="426" height="813" alt="adv eap" src="https://github.com/user-attachments/assets/1cf18c60-bf61-4edf-88e1-b1c57d19ae34" />
+
