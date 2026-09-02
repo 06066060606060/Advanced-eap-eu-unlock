@@ -14,8 +14,15 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
 .metrics{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:var(--shadow)}.metric{background:var(--card);padding:14px 7px;text-align:center}.metric .k{font-size:9px;color:var(--muted);font-weight:650}.metric .v{font-size:17px;margin-top:5px;font-weight:580;letter-spacing:-.03em}.good{color:var(--green)!important}.warn{color:var(--amber)!important}.bad{color:var(--red)!important}
 .quick{margin-top:14px;background:var(--card);border-radius:20px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}.qrow{min-height:60px;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px}.qrow+.qrow{border-top:1px solid var(--line)}.ql{display:flex;align-items:center;gap:12px;min-width:0}.ico{width:28px;height:28px;border-radius:50%;background:var(--bg);display:grid;place-items:center;font-size:12px;font-weight:700;flex:0 0 auto}.qt{font-size:14px;font-weight:560}.qs{font-size:10px;color:var(--muted);margin-top:2px;white-space:nowrap}.rightctl{display:flex;align-items:center;gap:9px;min-width:0}.prio{font-size:9.5px;font-weight:680;color:var(--green);white-space:nowrap;text-align:right}.prio b{display:block;font-size:7.5px;color:var(--muted);font-weight:620;margin-bottom:2px;letter-spacing:.05em}.toggle{position:relative;width:43px;height:25px;flex:0 0 auto}.toggle input{display:none}.track{position:absolute;inset:0;border-radius:99px;background:#b8b8b3;transition:.18s}.track:after{content:"";position:absolute;width:19px;height:19px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.18s;box-shadow:0 1px 3px rgba(0,0,0,.25)}.toggle input:checked+.track{background:var(--green)}.toggle input:checked+.track:after{transform:translateX(18px)}
 .gatecard{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:20px;padding:15px;box-shadow:var(--shadow)}.gatehead{display:flex;align-items:center;justify-content:space-between;gap:12px}.gatetitle{font-size:13px;font-weight:590}.gatepill{border:1px solid var(--green);color:var(--green);border-radius:999px;padding:7px 11px;font-size:11px;font-weight:700;white-space:nowrap}.gatepill.closed{border-color:var(--muted);color:var(--muted)}.gategrid{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:14px;overflow:hidden;margin-top:12px}.gateitem{background:var(--card);padding:11px 5px;text-align:center}.gk{font-size:8px;color:var(--muted);font-weight:650;letter-spacing:.04em}.gv{font-size:11px;margin-top:4px;font-weight:650;white-space:nowrap}
-.canline{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}.can{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}.canTop{display:flex;align-items:center;justify-content:space-between}.canName{font-size:12px;font-weight:590}.badge{font-size:9px;color:var(--green);font-weight:700}.canVal{font-size:22px;margin-top:10px;font-weight:520;letter-spacing:-.04em}.canSub{font-size:9px;color:var(--muted);margin-top:4px}
+.canline{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:8px}.can{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:15px;box-shadow:var(--shadow)}.canTop{display:flex;align-items:center;justify-content:space-between}.canName{font-size:12px;font-weight:590}.badge{font-size:9px;color:var(--green);font-weight:700}.canVal{font-size:22px;margin-top:10px;font-weight:520;letter-spacing:-.04em}.canVal.online{color:var(--green)}.canVal.offline{color:var(--red)}.online{color:var(--green)}.offline{color:var(--red)}.canSub{font-size:9px;color:var(--muted);margin-top:4px}
 .drawer{margin-top:14px;background:var(--card);border:1px solid var(--line);border-radius:20px;overflow:hidden;box-shadow:var(--shadow)}details+details{border-top:1px solid var(--line)}summary{list-style:none;cursor:pointer;padding:17px 16px;display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:570}summary::-webkit-details-marker{display:none}.arrow{font-size:15px;color:var(--muted);transition:.18s}details[open] .arrow{transform:rotate(90deg)}.body{padding:0 16px 15px}.r{display:flex;justify-content:space-between;gap:16px;padding:10px 0;font-size:11px;border-top:1px solid var(--line)}.rk{color:var(--muted)}.rv{text-align:right;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.subhead{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.08em;margin:13px 0 7px}.controlgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding-top:6px}.btn{border:0;border-radius:13px;padding:12px;background:var(--bg);color:var(--ink);font-size:11px;font-weight:600}.btn.primary{background:var(--ink);color:var(--bg)}.btn.danger{color:var(--red)}.fieldgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.field{background:var(--bg);border-radius:13px;padding:9px 10px}.field label{display:block;font-size:8px;color:var(--muted);font-weight:650;margin-bottom:5px}.field input{width:100%;border:0;outline:0;background:transparent;color:var(--ink);font-size:13px}.field.full{grid-column:1/-1}.ota{margin-top:8px}.ota input[type=file]{width:100%;font-size:10px;color:var(--muted);margin:6px 0 8px}.progress{height:4px;background:var(--line);border-radius:99px;overflow:hidden;display:none}.progress.show{display:block}.progress>i{display:block;height:100%;width:0;background:var(--green)}.otaMsg{font-size:9px;color:var(--muted);margin-top:7px}.linkbtn{display:flex;align-items:center;justify-content:center;text-decoration:none}
+.confirmOverlay{position:fixed;inset:0;background:rgba(0,0,0,.52);display:none;align-items:center;justify-content:center;padding:20px;z-index:100}
+.confirmOverlay.show{display:flex}
+.confirmBox{width:min(100%,390px);background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:20px;padding:22px;box-shadow:0 16px 50px rgba(0,0,0,.25)}
+.confirmTitle{font-size:16px;font-weight:700;margin-bottom:10px}
+.confirmText{font-size:13px;line-height:1.45;color:var(--red);font-weight:650}
+.confirmActions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:20px}
+.confirmActions .btn{padding:12px}
 .toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:#111;color:#fff;padding:10px 14px;border-radius:999px;font-size:11px;opacity:0;pointer-events:none;transition:.2s;z-index:20}.toast.show{opacity:.94;transform:translate(-50%,0)}.bottom{text-align:center;margin-top:18px;font-size:9px;color:var(--muted)}
 @media(max-width:380px){.mode{font-size:40px}.mode.compact{font-size:27px}.qrow{padding:0 13px}.qs{max-width:140px;overflow:hidden;text-overflow:ellipsis}.prio{font-size:8.5px}.gategrid{grid-template-columns:1fr 1fr}.canline{grid-template-columns:1fr}}
 </style>
@@ -50,8 +57,8 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
   </section>
 
   <div class="canline">
-    <section class="can"><div class="canTop"><div class="canName">CAN A</div><div class="badge" id="canABadge">—</div></div><div class="canVal">0x249</div><div class="canSub">RX + TX · MCP2515</div></section>
-    <section class="can"><div class="canTop"><div class="canName">CAN B</div><div class="badge" id="canBBadge">—</div></div><div class="canVal">TWAI</div><div class="canSub">0x3F8 · 0x3FD + other</div></section>
+    <section class="can"><div class="canTop"><div class="canName">CAN A</div><div class="badge" id="canABadge">—</div></div><div class="canVal" id="canAStatus">—</div><div class="canSub">MCP2515 · BUS STATUS</div></section>
+    <section class="can"><div class="canTop"><div class="canName">CAN B</div><div class="badge" id="canBBadge">—</div></div><div class="canVal" id="canBStatus">—</div><div class="canSub">TWAI · BUS STATUS</div></section>
   </div>
 
   <section class="drawer">
@@ -60,8 +67,7 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
       <div class="body">
         <div class="r"><span class="rk">HandsOn real</span><span class="rv" id="liveHo">—</span></div>
         <div class="r"><span class="rk">Last injected</span><span class="rv" id="liveInj">—</span></div>
-                <div class="r"><span class="rk">0x249 RX</span><span class="rv" id="live249">—</span></div>
-        <div class="r"><span class="rk">Summon TX OK / FAIL</span><span class="rv" id="liveSumTx">—</span></div>
+                <div class="r"><span class="rk">Summon TX OK / FAIL</span><span class="rv" id="liveSumTx">—</span></div>
       </div>
     </details>
 
@@ -83,7 +89,20 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
         <div class="r"><span class="rk">Countdown</span><span class="rv" id="blinkRemain">—</span></div>
         <div class="r"><span class="rk">Behavior</span><span class="rv" id="blinkBehavior">—</span></div>
         <div class="r"><span class="rk">Active turn</span><span class="rv" id="blinkTurn">—</span></div>
-        <div class="r"><span class="rk">0x24A RX</span><span class="rv" id="blink24a">—</span></div>
+        <div class="subhead">TURN SIGNAL TYPE</div>
+        <div class="controlgrid" style="padding-top:0">
+          <button class="btn" id="blinkTransportStalk">STALK · 0x249</button>
+          <button class="btn" id="blinkTransportStalkless">STALKLESS · 0x3C2</button>
+        </div>
+        <div class="subhead" style="margin-top:8px">Turn Signal Type</div>
+        <div class="r"><span class="rk">Selected type</span><span class="rv" id="blinkTransportModeState">STALK · 0x249</span></div>
+        <div class="subhead">STALK TRANSPORT</div>
+        <div class="r"><span class="rk">Active transport</span><span class="rv" id="blinkTransport">—</span></div>
+        <div class="r"><span class="rk">0x249 RX</span><span class="rv" id="live249">—</span></div>
+        <div class="r"><span class="rk">0x3C2 RX</span><span class="rv" id="blink3c2">—</span></div>
+        <div class="r"><span class="rk">Stalkless left</span><span class="rv" id="stalklessLeft">—</span></div>
+        <div class="r"><span class="rk">Stalkless right</span><span class="rv" id="stalklessRight">—</span></div>
+        <div class="r"><span class="rk">Stalkless TX OK / FAIL</span><span class="rv" id="stalklessTx">—</span></div>
         <div class="r"><span class="rk">0x249 checksum</span><span class="rv" id="blinkCk">—</span></div>
         <div class="r"><span class="rk">0x249 raw</span><span class="rv" id="blinkRaw">—</span></div>
       </div>
@@ -105,10 +124,10 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
       </div>
     </details>
 
-    <details>
-      <summary><span>TLSSC Restore</span><span class="arrow">›</span></summary>
+      <details>
+      <summary><span>TLSSC Restore For banned car only</span><span class="arrow">›</span></summary>
       <div class="body">
-        <div class="subhead">For banned car only</div>
+        <div style="color:red" class="subhead">Do not use on non banned car you will be banned instantly.</div>
         <button class="btn" id="tlsscRestoreToggle" style="width:100%">Enable TLSSC Restore</button>
       </div>
     </details>
@@ -147,6 +166,16 @@ const char INDEX_HTML[] PROGMEM = R"HTML(
   </section>
   <div class="bottom">T2CAN UNLOCK</div>
 </div>
+<div class="confirmOverlay" id="tlsscConfirm" role="dialog" aria-modal="true" aria-labelledby="tlsscConfirmTitle">
+  <div class="confirmBox">
+    <div class="confirmTitle" id="tlsscConfirmTitle">TLSSC Restore Warning</div>
+    <div class="confirmText">Do not use on non banned car you will be banned instantly</div>
+    <div class="confirmActions">
+      <button class="btn" id="tlsscCancel">Cancel</button>
+      <button class="btn primary" id="tlsscConfirmBtn">Confirm</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);let otaUploading=false,lastOk=0,lastBlink=null,lastSum=null,lastSys=null,lastDas=null;
@@ -157,15 +186,67 @@ function modeInfo(ds,noa){switch(Number(ds)){case 0:case 1:case 2:return['OFF','
 const TURN={0:'IDLE',2:'RIGHT',4:'UP_2',6:'LEFT',7:'LEFT legacy',8:'DOWN_2'};
 async function jget(url){const r=await fetch(url,{cache:'no-store'});if(!r.ok)throw Error(r.status);ok();return r.json()}async function post(url){const r=await fetch(url,{method:'POST'});if(!r.ok&&!([202].includes(r.status)))throw Error(r.status);ok();return r}
 
-async function fetchBlink(){try{const s=lastBlink=await jget('/api/blinkA/stats');const [m,c]=modeInfo(s.dasState,s.noaActive);$('apMode').textContent=m;$('apMode').className='mode '+c;$('blinkToggle').checked=!!s.enabled;$('blinkModeState').textContent=s.autoMode===1?'AP & NOA · state 3 + 5':'NOA only · state 5';$('blinkModeNoa').className='btn '+(s.autoMode===0?'primary':'');$('blinkModeApNoa').className='btn '+(s.autoMode===1?'primary':'');$('blinkerState').textContent=!s.enabled?'OFF':s.noaActive?'READY':'STANDBY';$('blinkerState').className='v '+(s.enabled&&s.noaActive?'good':'');if(document.activeElement!==$('blinkDelay'))$('blinkDelay').value=(Number(s.delayMs)/1000).toFixed(1);$('blinkGate').textContent=s.noaActive?'NOA · FRESH':(s.noaRawActive?'NOA · STALE':'BLOCKED');$('blinkArmed').textContent=s.autoArmed?'ARMED':'IDLE';$('blinkRemain').textContent=s.autoArmed?s.autoRemainMs+' ms':'—';$('blinkBehavior').textContent=s.behaviorType;$('blinkTurn').textContent=TURN[s.activeTurn]??s.activeTurn;$('live249').textContent=s.rx249;$('blinkCk').textContent=!s.seen249?'—':(s.cksumSelfTest?'OK':'MISMATCH');$('blinkRaw').textContent=s.realRaw||'—';$('buttonState').textContent=s.laneChangeButtonPressed?'PRESSED':'IDLE';$('buttonState').className='v '+(s.laneChangeButtonPressed?'good':'');const bcfg=['STANDARD','AGGRESSIVE','MAD_MAX'][Number(s.ulcBlindSpotInjectConfig)||0];$('blindspotState').textContent=bcfg;$('blindspotInjected').textContent=bcfg+' · AP/NOA';$('laneButtonDetail').textContent=s.laneChangeButtonPressed?'PRESSED':'IDLE';$('laneCancelCount').textContent=s.laneChangeCancelCount||0;$('blindspotStandard').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===0?'primary':'');$('blindspotAggressive').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===1?'primary':'');$('blindspotMadMax').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===2?'primary':'')}catch(e){}}
+async function fetchBlink(){try{const s=lastBlink=await jget('/api/blinkA/stats');const [m,c]=modeInfo(s.dasState,s.noaActive);$('apMode').textContent=m;$('apMode').className='mode '+c;$('blinkToggle').checked=!!s.enabled;$('blinkModeState').textContent=s.autoMode===1?'AP & NOA · state 3 + 5':'NOA only · state 5';$('blinkTransportModeState').textContent=Number(s.transportMode)===2?'STALKLESS · 0x3C2':'STALK · 0x249';$('blinkTransportStalk').className='btn '+(Number(s.transportMode)===1?'primary':'');$('blinkTransportStalkless').className='btn '+(Number(s.transportMode)===2?'primary':'');$('blinkModeNoa').className='btn '+(s.autoMode===0?'primary':'');$('blinkModeApNoa').className='btn '+(s.autoMode===1?'primary':'');$('blinkerState').textContent=!s.enabled?'OFF':s.noaActive?'READY':'STANDBY';$('blinkerState').className='v '+(s.enabled&&s.noaActive?'good':'');if(document.activeElement!==$('blinkDelay'))$('blinkDelay').value=(Number(s.delayMs)/1000).toFixed(1);$('blinkGate').textContent=s.noaActive?'NOA · FRESH':(s.noaRawActive?'NOA · STALE':'BLOCKED');$('blinkArmed').textContent=s.autoArmed?'ARMED':'IDLE';$('blinkRemain').textContent=s.autoArmed?s.autoRemainMs+' ms':'—';$('blinkBehavior').textContent=s.behaviorType;$('blinkTurn').textContent=TURN[s.activeTurn]??s.activeTurn;
+const transport=s.transportName||'—';
+$('blinkTransport').textContent=transport;
+$('blinkTransport').className='rv '+(transport.includes('STALKLESS')?'good':transport.includes('STALK')?'good':'');
+$('live249').textContent=s.rx249??0;
+$('blink3c2').textContent=s.rx3C2??0;
+$('stalklessLeft').textContent=s.stalklessLeftButton?'PRESSED':'IDLE';
+$('stalklessRight').textContent=s.stalklessRightButton?'PRESSED':'IDLE';
+$('stalklessTx').textContent=(s.stalklessTxOk??0)+' / '+(s.stalklessTxFail??0);
+$('blinkCk').textContent=!s.seen249?'—':(s.cksumSelfTest?'OK':'MISMATCH');
+$('blinkRaw').textContent=s.realRaw||'—';$('buttonState').textContent=s.laneChangeButtonPressed?'PRESSED':'IDLE';$('buttonState').className='v '+(s.laneChangeButtonPressed?'good':'');const bcfg=['STANDARD','AGGRESSIVE','MAD_MAX'][Number(s.ulcBlindSpotInjectConfig)||0];$('blindspotState').textContent=bcfg;$('blindspotInjected').textContent=bcfg+' · AP/NOA';$('laneButtonDetail').textContent=s.laneChangeButtonPressed?'PRESSED':'IDLE';$('laneCancelCount').textContent=s.laneChangeCancelCount||0;$('blindspotStandard').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===0?'primary':'');$('blindspotAggressive').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===1?'primary':'');$('blindspotMadMax').className='btn '+(Number(s.ulcBlindSpotInjectConfig)===2?'primary':'')}catch(e){}}
 async function fetchDas(){try{const s=lastDas=await jget('/api/das/stats');$('blink24a').textContent=s.visualDebugRx}catch(e){}}
-async function fetchSum(){try{const s=lastSum=await jget('/api/summon/stats');$('summonToggle').checked=!!s.enabled;$('tlsscToggle').checked=!!s.tlssc;const r=$('tlsscRestoreToggle');r.textContent=s.tlsscRestore?'Disable TLSSC Restore':'Enable TLSSC Restore';r.className='btn '+(s.tlsscRestore?'primary':'');$('priorityState').textContent=s.priorityStateName||s.priorityState;$('sumPriorityDetail').textContent=s.priorityStateName||s.priorityState;$('sumFreshPark').textContent=s.priorityFreshParked?'YES':'NO';$('sumTxQueue').textContent=s.txQueueNow+' / '+s.txQueueMax;$('sumShed').textContent=s.nonSummonShed+' · S '+s.standbyShed+' · F '+s.fullShed;$('sumFlush').textContent=s.summonQueueFlush;$('sumFull').textContent=s.priorityFullEnter+' / '+s.priorityFullExit;$('sumRxIds').textContent=[s.rx280,s.rx390,s.rx921,s.rx1016].join(' / ');$('liveSumTx').textContent=s.txOk+' / '+s.txFail;const gp=$('gatePill');gp.textContent=s.gate?'OPEN':'CLOSED';gp.className='gatepill '+(s.gate?'':'closed');[['gPark',s.parked,'ON','OFF'],['gSummon',s.summon,'ON','OFF'],['gAca',s.aca,'ACTIVE','INACTIVE'],['gSpr',s.spr,'SEEN','NOT SEEN']].forEach(([id,v,a,b])=>{const e=$(id);e.textContent=v?a:b;e.className='gv '+(v?'good':'')});const bState=s.canStateName||['STOPPED','RUNNING','BUS OFF','RECOVERING'][s.canState]||String(s.canState);$('canBBadge').textContent=bState;$('canBBadge').className='badge '+(s.canState===1?'good':s.canState===2?'bad':'warn')}catch(e){}}
-async function fetchSys(){try{const s=lastSys=await jget('/api/system/stats');$('sysFw').textContent=s.fwVersion||'—';$('sysUptime').textContent=fmtUptime(s.uptimeS);$('sysHeap').textContent=Math.round((s.freeHeap||0)/1024)+' KB';$('sysReinit').textContent=s.canHardReinit+' / fail '+s.canHardReinitFail;$('sysReason').textContent=s.canLastHardReason;$('canABadge').textContent=s.mcpReady?'READY':'NOT READY';if(!lastSum){$('canBBadge').textContent=s.twaiReady?'RUNNING':'NOT READY'}}catch(e){}}
+async function fetchSum(){try{const s=lastSum=await jget('/api/summon/stats');$('summonToggle').checked=!!s.enabled;$('tlsscToggle').checked=!!s.tlssc;const r=$('tlsscRestoreToggle');r.textContent=s.tlsscRestore?'Disable TLSSC Restore':'Enable TLSSC Restore';r.className='btn '+(s.tlsscRestore?'primary':'');$('priorityState').textContent=s.priorityStateName||s.priorityState;$('sumPriorityDetail').textContent=s.priorityStateName||s.priorityState;$('sumFreshPark').textContent=s.priorityFreshParked?'YES':'NO';$('sumTxQueue').textContent=s.txQueueNow+' / '+s.txQueueMax;$('sumShed').textContent=s.nonSummonShed+' · S '+s.standbyShed+' · F '+s.fullShed;$('sumFlush').textContent=s.summonQueueFlush;$('sumFull').textContent=s.priorityFullEnter+' / '+s.priorityFullExit;$('sumRxIds').textContent=[s.rx280,s.rx390,s.rx921,s.rx1016].join(' / ');$('liveSumTx').textContent=s.txOk+' / '+s.txFail;const gp=$('gatePill');gp.textContent=s.gate?'OPEN':'CLOSED';gp.className='gatepill '+(s.gate?'':'closed');[['gPark',s.parked,'ON','OFF'],['gSummon',s.summon,'ON','OFF'],['gAca',s.aca,'ACTIVE','INACTIVE'],['gSpr',s.spr,'SEEN','NOT SEEN']].forEach(([id,v,a,b])=>{const e=$(id);e.textContent=v?a:b;e.className='gv '+(v?'good':'')});}catch(e){}}
+async function fetchSys(){try{const s=lastSys=await jget('/api/system/stats');$('sysFw').textContent=s.fwVersion||'—';$('sysUptime').textContent=fmtUptime(s.uptimeS);$('sysHeap').textContent=Math.round((s.freeHeap||0)/1024)+' KB';$('sysReinit').textContent=s.canHardReinit+' / fail '+s.canHardReinitFail;$('sysReason').textContent=s.canLastHardReason;
+const canAOnline=!!s.mcpTrafficOnline;
+$('canAStatus').textContent=canAOnline?'ONLINE':'OFFLINE';
+$('canAStatus').className='canVal '+(canAOnline?'online':'offline');
+$('canABadge').textContent=s.mcpReady?'READY':'NOT READY';
+const canBOnline=!!s.twaiTrafficOnline;
+$('canBStatus').textContent=canBOnline?'ONLINE':'OFFLINE';
+$('canBStatus').className='canVal '+(canBOnline?'online':'offline');
+$('canBBadge').textContent=s.twaiReady?'READY':'NOT READY';
+}catch(e){console.warn('fetchSys failed',e)}}
 
 $('blinkToggle').onchange=async e=>{try{await post(e.target.checked?'/api/blinkA/enable':'/api/blinkA/disable');fetchBlink()}catch(x){}};
 $('summonToggle').onchange=async e=>{try{await post(e.target.checked?'/api/summon/enable':'/api/summon/disable');fetchSum()}catch(x){}};
 $('tlsscToggle').onchange=async e=>{try{await post(e.target.checked?'/api/summon/tlssc-enable':'/api/summon/tlssc-disable');fetchSum()}catch(x){}};
-$('tlsscRestoreToggle').onclick=async()=>{const enabled=!!(lastSum&&lastSum.tlsscRestore);try{await post(enabled?'/api/tlssc-restore/disable':'/api/tlssc-restore/enable');await fetchSum();toast(enabled?'TLSSC Restore disabled':'TLSSC Restore enabled')}catch(e){toast('TLSSC Restore update failed')}};
+const tlsscConfirm=$('tlsscConfirm');
+const tlsscCancel=$('tlsscCancel');
+const tlsscConfirmBtn=$('tlsscConfirmBtn');
+
+function closeTlsscConfirm(){tlsscConfirm.classList.remove('show')}
+
+async function setTlsscRestore(){
+  try{
+    await post('/api/tlssc-restore/enable');
+    await fetchSum();
+    toast('TLSSC Restore enabled');
+  }catch(e){
+    toast('TLSSC Restore update failed');
+  }
+}
+
+tlsscCancel.onclick=closeTlsscConfirm;
+tlsscConfirmBtn.onclick=async()=>{closeTlsscConfirm();await setTlsscRestore()};
+tlsscConfirm.onclick=e=>{if(e.target===tlsscConfirm)closeTlsscConfirm()};
+
+$('tlsscRestoreToggle').onclick=async()=>{
+  const enabled=!!(lastSum&&lastSum.tlsscRestore);
+  if(enabled){
+    try{
+      await post('/api/tlssc-restore/disable');
+      await fetchSum();
+      toast('TLSSC Restore disabled');
+    }catch(e){
+      toast('TLSSC Restore update failed');
+    }
+    return;
+  }
+  tlsscConfirm.classList.add('show');
+};
 
 async function setBlinkMode(mode){
   try{
@@ -174,6 +255,15 @@ async function setBlinkMode(mode){
     toast(mode===1?'Auto Blinker: AP & NOA':'Auto Blinker: NOA only');
   }catch(e){toast('Mode update failed')}
 }
+async function setBlinkTransport(transport){
+  try{
+    await post('/api/blinkA/transport?transport='+transport);
+    await fetchBlink();
+    toast(transport===2?'Turn Signal: Stalkless 0x3C2':'Turn Signal: Stalk 0x249');
+  }catch(e){toast('Turn signal type update failed')}
+}
+$('blinkTransportStalk').onclick=()=>setBlinkTransport(1);
+$('blinkTransportStalkless').onclick=()=>setBlinkTransport(2);
 $('blinkModeNoa').onclick=()=>setBlinkMode(0);
 $('blinkModeApNoa').onclick=()=>setBlinkMode(1);
 async function setBlindspotConfig(cfg){
