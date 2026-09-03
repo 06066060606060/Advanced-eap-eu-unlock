@@ -27,6 +27,7 @@
 - Support for stalkless car compatibility (selectable on the dashboard) thanks @Frizull
 - Bus status now show if data is being detected on the CAN bus (usefull to check correct wiring)
 - Fix CAN recovery loop on CAN B when parked
+- ulcBlindSpot can be set to agressive, (it's the default setting by Tesla)
 
 ---
 
