@@ -1,8 +1,6 @@
-⚠️  
-# NEW BRANCH:  
-# t2can-universal-unlock V3  
+New App
+# t2can-universal-unlock V3
 **https://github.com/06066060606060/t2can-universal-unlock**
-
 
 # Advanced EAP & EU-Unlock V2.6.0
 ### Unified firmware for LilyGO / T-2Can
@@ -17,7 +15,6 @@
 
 >  **Important:** You will need another ESP32 for **Nag-Killer on Party CAN**.
 
-#### ⚠️ DO NOT ACTIVATE TLSSC RESTORE ON NON BANNED CAR (you will be banned instantly)
 
 ### CAN Bus Configuration
 
@@ -33,8 +30,6 @@
 - Support for stalkless car compatibility (selectable on the dashboard) thanks @Frizull
 - Bus status now show if data is being detected on the CAN bus (usefull to check correct wiring)
 - Fix CAN recovery loop on CAN B when parked
-- ulcBlindSpot can be set to agressive, (it's the default setting by Tesla)
-
 ---
 
 ## 🚗 Advanced EAP
@@ -66,11 +61,11 @@
 
 ---
 
-## 🚙 Model YL Branch
+## 🚙 Model YL 
 
-A dedicated branch is available for **Model YL**:
-
-https://github.com/06066060606060/Advanced-eap-eu-unlock/tree/modelYL
+Available in the new app: 
+# t2can-universal-unlock V3  
+**https://github.com/06066060606060/t2can-universal-unlock**  
 
 ---
 
