@@ -1,5 +1,3 @@
-# New App: t2can-universal-unlock V3
-**https://github.com/06066060606060/t2can-universal-unlock**
 
 # Advanced EAP & EU-Unlock V2.6.0
 ### Unified firmware for LilyGO / T-2Can
